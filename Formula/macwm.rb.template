@@ -1,0 +1,25 @@
+class Macwm < Formula
+  desc "Keyboard-first window management for macOS"
+  homepage "https://github.com/OWNER/macwm"
+  # Render this template with a real release artifact; never publish the placeholders.
+  url ENV.fetch("MACWM_FORMULA_URL")
+  sha256 ENV.fetch("MACWM_FORMULA_SHA256")
+  license "MIT"
+
+  depends_on :macos
+
+  def install
+    system "swift", "build", "--configuration", "release"
+    bin.install ".build/release/macwm"
+    bin.install ".build/release/macwm-daemon"
+  end
+
+  service do
+    run [opt_bin/"macwm-daemon"]
+    keep_alive true
+  end
+
+  test do
+    system bin/"macwm", "status"
+  end
+end

@@ -1,0 +1,28 @@
+[general]
+layout = "bsp"
+gap = 8
+auto_tile = true
+focus_follows_mouse = false
+
+[bar]
+# Position of macwm-bar: top, bottom, left, or right.
+position = "top"
+
+[keys]
+focus_left = "alt+h"
+focus_down = "alt+j"
+focus_up = "alt+k"
+focus_right = "alt+l"
+move_left = "alt+shift+h"
+move_down = "alt+shift+j"
+move_up = "alt+shift+k"
+move_right = "alt+shift+l"
+toggle_float = "alt+f"
+maximize = "alt+m"
+
+[workspaces]
+count = 9
+
+[display]
+outer_gap = 8
+inner_gap = 8
