@@ -330,13 +330,11 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     )
     let windowIDs = tileableWindows.map(\.id)
     let layout = workspaces.layout(for: workspaces.activeWorkspace, default: config.layout)
-    let storedTree = workspaces.storedLayoutTree(for: workspaces.activeWorkspace)
     let frames: [WindowID: Frame]
-    if layout == .bsp, let storedTree, storedTree.isAdaptive, storedTree.windowIDs == Set(windowIDs), Set(windowIDs).count == windowIDs.count {
-        frames = BSPLayout.frames(for: storedTree, in: layoutFrame, outerGap: config.outerGap, innerGap: config.innerGap)
+    if layout == .bsp, let tree = workspaces.validatedLayoutTree(for: windowIDs, in: workspaces.activeWorkspace) {
+        frames = BSPLayout.frames(for: tree, in: layoutFrame, outerGap: config.outerGap, innerGap: config.innerGap)
     } else {
         frames = LayoutEngine.frames(for: windowIDs, layout: layout, in: layoutFrame, outerGap: config.outerGap, innerGap: config.innerGap)
-        if layout == .bsp { workspaces.setLayoutTree(BSPLayout.tree(for: windowIDs, in: layoutFrame), for: workspaces.activeWorkspace) }
     }
 var appliedCount = 0
 

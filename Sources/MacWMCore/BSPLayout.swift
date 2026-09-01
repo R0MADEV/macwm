@@ -14,6 +14,13 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
         }
     }
 
+    public var leafCount: Int {
+        switch self {
+        case .leaf: return 1
+        case let .split(_, _, first, second): return first.leafCount + second.leafCount
+        }
+    }
+
     public var isAdaptive: Bool {
         adaptiveShape(.vertical)
     }

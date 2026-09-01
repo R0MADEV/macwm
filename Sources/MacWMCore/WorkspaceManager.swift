@@ -71,8 +71,19 @@ public struct WorkspaceManager: Sendable {
 
     public func layoutTree(for windows: [WindowID], in workspace: Int) -> WindowTree? {
         guard isValid(workspace), !windows.isEmpty else { return nil }
-        guard let tree = trees[workspace], tree.windowIDs == Set(windows), Set(windows).count == windows.count else {
+        guard let tree = trees[workspace], tree.containsExactly(windows) else {
             return BSPLayout.tree(for: windows)
+        }
+        return tree
+    }
+
+    public mutating func validatedLayoutTree(for windows: [WindowID], in workspace: Int) -> WindowTree? {
+        guard isValid(workspace) else { return nil }
+        let tree = layoutTree(for: windows, in: workspace)
+        if let tree {
+            trees[workspace] = tree
+        } else {
+            trees.removeValue(forKey: workspace)
         }
         return tree
     }
@@ -122,4 +133,11 @@ public struct WorkspaceManager: Sendable {
         activeWorkspace = workspace
     }
 
+}
+
+private extension WindowTree {
+    func containsExactly(_ windows: [WindowID]) -> Bool {
+        let windowSet = Set(windows)
+        return !windows.isEmpty && windows.count == windowSet.count && leafCount == windows.count && windowIDs == windowSet
+    }
 }

@@ -36,3 +36,41 @@ import Testing
 
     #expect(manager.layoutTree(for: [WindowID(1), WindowID(2)], in: 1) != stale)
 }
+
+@Test func invalidTreeIsReplacedOnlyWhenAllTileableWindowIDsMatch() {
+    let stale = WindowTree.split(
+        direction: .vertical,
+        ratio: 0.5,
+        first: .leaf(WindowID(1)),
+        second: .leaf(WindowID(99))
+    )
+    var manager = WorkspaceManager(count: 1, trees: [1: stale])
+
+    let replacement = manager.validatedLayoutTree(for: [WindowID(1), WindowID(2)], in: 1)
+
+    #expect(replacement?.windowIDs == [WindowID(1), WindowID(2)])
+    #expect(manager.storedLayoutTree(for: 1) == replacement)
+}
+
+@Test func duplicateTreeLeavesAreInvalidEvenWhenTheIDSetMatches() {
+    let duplicate = WindowTree.split(
+        direction: .vertical,
+        ratio: 0.5,
+        first: .leaf(WindowID(1)),
+        second: .leaf(WindowID(1))
+    )
+    var manager = WorkspaceManager(count: 1, trees: [1: duplicate])
+
+    let replacement = manager.validatedLayoutTree(for: [WindowID(1)], in: 1)
+
+    #expect(replacement == .leaf(WindowID(1)))
+    #expect(manager.storedLayoutTree(for: 1) == replacement)
+}
+
+@Test func emptyTileableSetRemovesPersistedTree() {
+    let stale = WindowTree.leaf(WindowID(99))
+    var manager = WorkspaceManager(count: 1, trees: [1: stale])
+
+    #expect(manager.validatedLayoutTree(for: [], in: 1) == nil)
+    #expect(manager.storedLayoutTree(for: 1) == nil)
+}
