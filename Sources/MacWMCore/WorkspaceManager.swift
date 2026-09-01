@@ -88,16 +88,20 @@ public struct WorkspaceManager: Sendable {
 
     public func layoutTree(for windows: [WindowID], in workspace: Int, frame: Frame = WorkspaceManager.referenceFrame) -> WindowTree? {
         guard isValid(workspace), !windows.isEmpty else { return nil }
-        return reconciledTree(for: windows, in: workspace, frame: frame).tree
+        return reconciledTree(for: windows, in: workspace, frame: frame, minimumCell: Self.defaultMinimumCell).tree
     }
 
-    public mutating func validatedLayoutTree(for windows: [WindowID], in workspace: Int, frame: Frame = WorkspaceManager.referenceFrame) -> WindowTree? {
+    /// Cells smaller than this make most macOS applications overflow their
+    /// tile, so new windows avoid creating them when a larger leaf exists.
+    public static let defaultMinimumCell: (width: Double, height: Double) = (400, 300)
+
+    public mutating func validatedLayoutTree(for windows: [WindowID], in workspace: Int, frame: Frame = WorkspaceManager.referenceFrame, minimumCell: (width: Double, height: Double) = WorkspaceManager.defaultMinimumCell) -> WindowTree? {
         guard isValid(workspace) else { return nil }
         guard !windows.isEmpty else {
             trees.removeValue(forKey: workspace)
             return nil
         }
-        let result = reconciledTree(for: windows, in: workspace, frame: frame)
+        let result = reconciledTree(for: windows, in: workspace, frame: frame, minimumCell: minimumCell)
         trees[workspace] = result.tree
         if result.usedPreselection { preselections.removeValue(forKey: workspace) }
         return result.tree
@@ -106,7 +110,7 @@ public struct WorkspaceManager: Sendable {
     /// Keeps the stored structure like Hyprland's dwindle layout: closed windows
     /// collapse their split and new windows split the last focused leaf, or the
     /// last leaf when nothing was focused. A missing or corrupt tree is rebuilt.
-    private func reconciledTree(for windows: [WindowID], in workspace: Int, frame: Frame) -> (tree: WindowTree?, usedPreselection: Bool) {
+    private func reconciledTree(for windows: [WindowID], in workspace: Int, frame: Frame, minimumCell: (width: Double, height: Double)) -> (tree: WindowTree?, usedPreselection: Bool) {
         let windowSet = Set(windows)
         let hasDuplicates = windowSet.count != windows.count
         guard !hasDuplicates, let stored = trees[workspace], stored.leafCount == stored.windowIDs.count else {
@@ -122,7 +126,7 @@ public struct WorkspaceManager: Sendable {
                 continue
             }
             let focused = lastFocused[workspace].flatMap { current.windowIDs.contains($0) ? $0 : nil }
-            let target = focused ?? current.lastLeaf
+            let target = Self.insertionTarget(preferred: focused ?? current.lastLeaf, in: current, frame: frame, minimumCell: minimumCell)
             let direction = preselection ?? current.automaticSplitDirection(for: target, in: frame)
             usedPreselection = usedPreselection || preselection != nil
             preselection = nil
@@ -140,6 +144,22 @@ public struct WorkspaceManager: Sendable {
         guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(first), tree.windowIDs.contains(second) else { return false }
         trees[workspace] = tree.swapped(first, second)
         return true
+    }
+
+    /// The preferred leaf unless splitting it would leave cells under the
+    /// minimum; then the largest leaf that still fits, or the preferred one
+    /// when nothing does.
+    private static func insertionTarget(preferred: WindowID, in tree: WindowTree, frame: Frame, minimumCell: (width: Double, height: Double)) -> WindowID {
+        let frames = tree.frames(in: frame)
+        func fits(_ id: WindowID) -> Bool {
+            guard let leaf = frames[id] else { return false }
+            let fitsSideBySide = leaf.width / 2 >= minimumCell.width && leaf.height >= minimumCell.height
+            let fitsStacked = leaf.height / 2 >= minimumCell.height && leaf.width >= minimumCell.width
+            return fitsSideBySide || fitsStacked
+        }
+        guard !fits(preferred) else { return preferred }
+        let largest = frames.filter { fits($0.key) }.max { $0.value.width * $0.value.height < $1.value.width * $1.value.height }
+        return largest?.key ?? preferred
     }
 
     public mutating func adjustSplitRatio(containing window: WindowID, by delta: Double, in workspace: Int) -> Bool {

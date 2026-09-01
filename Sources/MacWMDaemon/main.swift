@@ -360,7 +360,11 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
 /// The terminal and the scratchpads are never tiled, hidden or parked;
 /// accessory apps such as the bar are already filtered out by AXClient.
 private func isManaged(_ window: ManagedWindow) -> Bool {
-    !runtimeConfiguration.value.unmanagedBundleIdentifiers.contains(window.bundleIdentifier)
+    // Transient popups such as Chrome's omnibox dropdown report no known
+    // subrole; parking or tiling them only disturbs the application.
+    let knownSubroles = ["AXStandardWindow", "AXDialog", "AXSystemDialog", "AXFloatingWindow"]
+    let isRealWindow = knownSubroles.contains(window.subrole)
+    return isRealWindow && !runtimeConfiguration.value.unmanagedBundleIdentifiers.contains(window.bundleIdentifier)
 }
 
 private func managedWindows(_ client: AXClient) -> [ManagedWindow] {

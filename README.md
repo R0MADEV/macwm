@@ -198,7 +198,7 @@ Every default can be changed under `[keys]`, and any command in the table above 
 
 When BSP is active, `move` is structural: it swaps the focused window with the nearest tileable window in that direction and recalculates all cells. It does not translate a window by a fixed pixel distance.
 
-The BSP tree keeps its structure while windows come and go, like Hyprland's dwindle layout: a new window splits the window you last focused, side by side when that window is wider than tall and top to bottom otherwise, or in the direction chosen with `preselect`; a closed window hands its space back to its sibling. Ratios changed with `resize`, swaps made with `move` and directions flipped with `toggle-split` therefore survive opening and closing windows.
+The BSP tree keeps its structure while windows come and go, like Hyprland's dwindle layout: a new window splits the window you last focused, side by side when that window is wider than tall and top to bottom otherwise, or in the direction chosen with `preselect`; a closed window hands its space back to its sibling. Because macOS applications often refuse sizes below roughly 400x300 points and would overflow their tile, a new window splits the largest leaf instead when splitting the focused one would leave cells under that minimum. Ratios changed with `resize`, swaps made with `move` and directions flipped with `toggle-split` therefore survive opening and closing windows.
 
 The BSP layout is recursive and supports any number of tileable windows. With three windows it produces one half-height/full-height area and two stacked areas; with four windows it produces a balanced four-cell layout. Every cell is constrained to the available visible frame and gaps.
 
