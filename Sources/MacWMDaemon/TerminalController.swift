@@ -46,10 +46,10 @@ final class TerminalController: @unchecked Sendable {
         guard client.setHidden(false, for: window) else { return }
         application.activate(options: [.activateIgnoringOtherApps])
 
-        // Read the restored window again so terminalFrame uses its current
+        // Read the restored window again so screenFrame uses its current
         // screen instead of the pre-restore/minimized snapshot.
         guard let restoredWindow = client.windows(for: application).first,
-              let frame = client.terminalFrame(for: restoredWindow),
+              let frame = client.screenFrame(for: restoredWindow),
               client.setFrame(frame, for: restoredWindow),
               let element = client.element(for: restoredWindow) else { return }
         _ = client.focus(element)

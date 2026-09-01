@@ -152,7 +152,7 @@ The BSP layout is recursive and supports any number of tileable windows. With th
 
 On startup, the daemon reads `~/.config/macwm/config.toml`. The loader applies `general.layout`, `general.gap`, `general.auto_tile`, `display.outer_gap` and `display.inner_gap`, plus configurable hotkeys and window rules.
 
-Workspaces `1` through `9` are logical workspaces. `Option+1` through `Option+9` switches workspace; adding Shift sends the focused window there. The current implementation uses Accessibility window minimization to hide windows, because macOS does not reliably support `AXHidden` on individual windows.
+Workspaces `1` through `9` are logical workspaces. `Option+1` through `Option+9` switches workspace; adding Shift sends the focused window there. Windows that belong to other workspaces are parked off-screen at the bottom-right corner of their display instead of being minimized, so switching is instant, never animates through the Dock and keeps the Dock free of minimized windows. Focusing a parked window, for example through `Cmd+Tab`, switches to its workspace. Floating and maximized windows return to their previous frame when their workspace becomes active again.
 
 Workspace assignments, floating state, maximize restore frames and bar position
 are persisted in `~/.config/macwm/state.json` using bundle identifier, title,

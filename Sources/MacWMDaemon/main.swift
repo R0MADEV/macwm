@@ -22,6 +22,7 @@ let workspaces = DaemonWorkspaces(assignments: persistedState.assignments, activ
 let layoutGuard = LayoutGuard()
 var store = WindowStore()
 var maximizedFrames: [WindowID: Frame] = [:]
+let parkedFrames = ParkedFrames()
 let socketPath = "/tmp/macwm.sock"
 let stateNotification = Notification.Name("com.macwm.stateChanged")
 
@@ -49,6 +50,7 @@ print("macwm: tracking \(store.windows.count) windows")
 if let focusedWindow = store.focusedWindow {
     print("macwm: focused \(focusedWindow.appName) - \(focusedWindow.title)")
 }
+showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
 applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
 workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts, barPosition: runtimeConfiguration.value.barPosition)
 notifyBar(workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
@@ -75,11 +77,15 @@ let observerRegistry = AXObserverRegistry { processID, event in
             workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
             store.setFocusedWindow(window.id)
             print("macwm: focused \(window.appName) - \(window.title)")
+            let windowWorkspace = workspaces.value.workspace(for: window.id)
+            guard windowWorkspace != workspaces.value.activeWorkspace else { return }
+            _ = switchWorkspace(windowWorkspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: runtimeConfiguration.value)
         case .windowDestroyed(let element):
             guard !layoutGuard.isApplying else { return }
             let id = WindowID(processID: UInt32(application.processIdentifier), elementHash: Int(truncatingIfNeeded: CFHash(element)))
             store.remove(id)
             maximizedFrames.removeValue(forKey: id)
+            parkedFrames.value.removeValue(forKey: id)
             workspaces.value.remove(id)
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
@@ -95,6 +101,8 @@ let observerRegistry = AXObserverRegistry { processID, event in
             for window in windows {
                 workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
                 if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
+                let belongsToActiveWorkspace = workspaces.value.workspace(for: window.id) == workspaces.value.activeWorkspace
+                if !belongsToActiveWorkspace { park(window, keepsFrame: !window.isTileable, client: client, store: &store) }
             }
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
@@ -193,7 +201,8 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
         return switchWorkspace(workspaces.value.activeWorkspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: configuration.value)
     case let .focus(direction):
-        guard let target = store.window(in: direction), let element = client.element(for: target) else { return "error: no window in direction" }
+        let candidateIDs = activeWorkspaceWindowIDs(store: store, workspaces: workspaces.value, tileableOnly: false)
+        guard let target = store.window(in: direction, among: candidateIDs), let element = client.element(for: target) else { return "error: no window in direction" }
         guard client.focus(element) else { return "error: unable to focus window" }
         store.setFocusedWindow(target.id)
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
@@ -202,11 +211,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     case let .move(direction):
         guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
-        let activeWorkspace = workspaces.value.activeWorkspace
-        let candidateIDs = Set(store.windows.filter {
-            let isInActiveWorkspace = workspaces.value.workspace(for: $0.id) == activeWorkspace
-            return $0.isTileable && isInActiveWorkspace
-        }.map(\.id))
+        let candidateIDs = activeWorkspaceWindowIDs(store: store, workspaces: workspaces.value, tileableOnly: true)
         guard focusedWindow.isTileable, let target = store.window(in: direction, among: candidateIDs) else { return "error: no tileable window in direction" }
         guard workspaces.value.swap(focusedWindow.id, target.id, in: workspaces.value.activeWorkspace) else { return "error: layout is not ready" }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
@@ -226,7 +231,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, floating: store.persistedFloating, maximized: persistedMaximizedFrames(store: store, maximizedFrames: maximizedFrames))
             return "ok"
         }
-        guard let targetFrame = client.maximizedFrame(for: focusedWindow) else { return "error: no screen" }
+        guard let targetFrame = client.visibleScreenFrame(for: focusedWindow) else { return "error: no screen" }
         guard client.setFrame(targetFrame, for: focusedWindow) else { return "error: unable to maximize window" }
         maximizedFrames[focusedWindow.id] = currentFrame
         store.updateFrame(targetFrame, for: focusedWindow.id)
@@ -278,16 +283,55 @@ private func switchWorkspace(
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts, barPosition: config.barPosition)
             notifyBar(workspace: workspace, layout: workspaces.value.layout(for: workspace, default: config.layout).rawValue, position: config.barPosition, workspaces: workspaces.value)
 
-    layoutGuard.isApplying = true
-    for window in store.windows {
-        let shouldHide = workspaces.value.workspace(for: window.id) != workspace
-        _ = client.setHidden(shouldHide, for: window)
-    }
-    layoutGuard.isApplying = false
-
+    showWorkspaceWindows(workspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
     applyTiling(client: client, store: &store, config: config, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
     workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
     return "ok"
+}
+
+private func activeWorkspaceWindowIDs(store: WindowStore, workspaces: WorkspaceManager, tileableOnly: Bool) -> Set<WindowID> {
+    Set(store.windows.filter { window in
+        let isInActiveWorkspace = workspaces.workspace(for: window.id) == workspaces.activeWorkspace
+        return isInActiveWorkspace && (!tileableOnly || window.isTileable)
+    }.map(\.id))
+}
+
+/// Parks every window outside `workspace` off-screen and brings the workspace's
+/// own windows back. Parking moves windows instead of minimizing them, so the
+/// switch is instant and never animates through the Dock.
+private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: inout WindowStore, workspaces: WorkspaceManager, maximizedFrames: [WindowID: Frame]) {
+    layoutGuard.isApplying = true
+    defer { layoutGuard.isApplying = false }
+    for window in store.windows {
+        let belongsToWorkspace = workspaces.workspace(for: window.id) == workspace
+        let isTiled = window.isTileable && maximizedFrames[window.id] == nil
+        guard belongsToWorkspace else {
+            park(window, keepsFrame: !isTiled, client: client, store: &store)
+            continue
+        }
+        unpark(window, willBeTiled: isTiled, client: client, store: &store)
+    }
+}
+
+/// `keepsFrame` saves the live frame so floating and maximized windows come back
+/// where the user left them; tiled windows are re-placed by the layout instead.
+private func park(_ window: ManagedWindow, keepsFrame: Bool, client: AXClient, store: inout WindowStore) {
+    guard let storedFrame = window.frame, let screen = client.screenFrame(for: window) else { return }
+    let frame = keepsFrame ? client.currentFrame(for: window) ?? storedFrame : storedFrame
+    guard !frame.isParked(in: screen) else { return }
+    if keepsFrame { parkedFrames.value[window.id] = frame }
+    let target = frame.parked(in: screen)
+    guard client.setFrame(target, for: window) else { return }
+    store.updateFrame(target, for: window.id)
+}
+
+private func unpark(_ window: ManagedWindow, willBeTiled: Bool, client: AXClient, store: inout WindowStore) {
+    guard let frame = window.frame, let screen = client.screenFrame(for: window), frame.isParked(in: screen) else { return }
+    let savedFrame = parkedFrames.value.removeValue(forKey: window.id)
+    guard !willBeTiled else { return }
+    let restored = savedFrame ?? frame.centered(in: client.visibleScreenFrame(for: window) ?? screen)
+    guard client.setFrame(restored, for: window) else { return }
+    store.updateFrame(restored, for: window.id)
 }
 
 private func notifyBar(workspace: Int, layout: String, position: BarPosition = .top, workspaces: WorkspaceManager? = nil) {

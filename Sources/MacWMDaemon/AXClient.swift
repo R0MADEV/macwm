@@ -151,6 +151,12 @@ final class AXClient {
         return AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, value) == .success
     }
 
+    /// Live frame read from Accessibility; the stored snapshot can be stale after the user drags the window.
+    func currentFrame(for window: ManagedWindow) -> Frame? {
+        guard let element = element(for: window) else { return nil }
+        return frame(of: element)
+    }
+
     func isMinimized(_ window: ManagedWindow) -> Bool {
         guard let element = element(for: window) else { return false }
         var value: CFTypeRef?
@@ -158,12 +164,14 @@ final class AXClient {
         return (value as? NSNumber)?.boolValue ?? false
     }
 
-    func maximizedFrame(for window: ManagedWindow) -> Frame? {
+    /// Visible area (without menu bar and Dock) of the screen holding the window, in Accessibility coordinates.
+    func visibleScreenFrame(for window: ManagedWindow) -> Frame? {
         guard let currentFrame = window.frame, let screen = screen(for: currentFrame) else { return nil }
         return accessibilityFrame(for: screen.visibleFrame)
     }
 
-    func terminalFrame(for window: ManagedWindow) -> Frame? {
+    /// Full frame of the screen holding the window, in Accessibility coordinates.
+    func screenFrame(for window: ManagedWindow) -> Frame? {
         guard let currentFrame = window.frame, let screen = screen(for: currentFrame) else { return nil }
         return accessibilityFrame(for: screen.frame)
     }

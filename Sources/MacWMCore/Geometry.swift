@@ -46,3 +46,31 @@ public extension Frame {
         )
     }
 }
+
+public extension Frame {
+    /// Off-screen spot used to hide a window without minimizing it. The frame
+    /// keeps its size and only `visibleSliver` points stay on screen at the
+    /// bottom-right corner, which macOS allows while a fully off-screen window
+    /// would be pushed back.
+    func parked(in screen: Frame, visibleSliver: Double = 1) -> Frame {
+        Frame(
+            x: screen.x + screen.width - visibleSliver,
+            y: screen.y + screen.height - visibleSliver,
+            width: width,
+            height: height
+        )
+    }
+
+    func isParked(in screen: Frame, visibleSliver: Double = 1) -> Bool {
+        x >= screen.x + screen.width - visibleSliver && y >= screen.y + screen.height - visibleSliver
+    }
+
+    func centered(in container: Frame) -> Frame {
+        Frame(
+            x: container.x + (container.width - width) / 2,
+            y: container.y + (container.height - height) / 2,
+            width: width,
+            height: height
+        )
+    }
+}
