@@ -53,3 +53,27 @@ import Testing
 
     #expect(manager.persistedAssignments[key] == nil)
 }
+
+@Test func reopenedWindowsOpenOnTheActiveWorkspace() {
+    let closed = ManagedWindow(id: WindowID(1), processID: 10, title: "Finder", bundleIdentifier: "com.apple.finder")
+    var manager = WorkspaceManager(count: 3, activeWorkspace: 1)
+    manager.register(closed, rules: [], defaultWorkspace: 3)
+    manager.remove(closed.id)
+
+    let reopened = ManagedWindow(id: WindowID(2), processID: 10, title: "Finder", bundleIdentifier: "com.apple.finder")
+    manager.register(reopened, rules: [], defaultWorkspace: 1)
+
+    #expect(manager.workspace(for: reopened.id) == 1)
+}
+
+@Test func newWindowsIgnorePersistedAssignmentsButRulesStillApply() {
+    let window = ManagedWindow(id: WindowID(1), processID: 10, title: "Finder", bundleIdentifier: "com.apple.finder")
+    var manager = WorkspaceManager(count: 3, assignments: [window.persistentKey: 3], activeWorkspace: 1)
+
+    manager.register(window, rules: [], defaultWorkspace: 1, restorePersisted: false)
+    #expect(manager.workspace(for: window.id) == 1)
+
+    let ruled = ManagedWindow(id: WindowID(2), processID: 10, title: "Mail", bundleIdentifier: "com.apple.mail")
+    manager.register(ruled, rules: [WindowRule(bundleIdentifier: "com.apple.mail", workspace: 2)], defaultWorkspace: 1, restorePersisted: false)
+    #expect(manager.workspace(for: ruled.id) == 2)
+}

@@ -99,7 +99,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
                 forProcessID: UInt32(application.processIdentifier)
             )
             for window in windows {
-                workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
+                workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace, restorePersisted: false)
                 if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
                 let belongsToActiveWorkspace = workspaces.value.workspace(for: window.id) == workspaces.value.activeWorkspace
                 if !belongsToActiveWorkspace { park(window, keepsFrame: !window.isTileable, client: client, store: &store) }

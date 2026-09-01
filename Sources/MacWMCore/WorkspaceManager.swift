@@ -40,12 +40,16 @@ public struct WorkspaceManager: Sendable {
         keyOwners[key] = window.id
     }
 
-    public mutating func register(_ window: ManagedWindow, rules: [WindowRule], defaultWorkspace: Int = 1) {
+    /// `restorePersisted` is for windows that already existed when the daemon
+    /// started or reloaded. Windows created while running always open on
+    /// `defaultWorkspace` unless a rule says otherwise.
+    public mutating func register(_ window: ManagedWindow, rules: [WindowRule], defaultWorkspace: Int = 1, restorePersisted: Bool = true) {
         guard assignments[window.id] == nil else { return }
         let rule = rules.first { $0.matches(bundleIdentifier: window.bundleIdentifier, title: window.title, subrole: window.subrole) }
         let key = window.persistentKey
         let hasDifferentOwner = keyOwners[key].map { $0 != window.id } ?? false
-        let persistedWorkspace = hasDifferentOwner ? nil : keyAssignments[key]
+        let canRestore = restorePersisted && !hasDifferentOwner
+        let persistedWorkspace = canRestore ? keyAssignments[key] : nil
         let workspace = rule?.workspace ?? persistedWorkspace ?? defaultWorkspace
         assignments[window.id] = isValid(workspace) ? workspace : 1
         windowKeys[window.id] = key
@@ -126,6 +130,7 @@ public struct WorkspaceManager: Sendable {
         assignments.removeValue(forKey: windowID)
         guard let key = windowKeys.removeValue(forKey: windowID), keyOwners[key] == windowID else { return }
         keyOwners.removeValue(forKey: key)
+        keyAssignments.removeValue(forKey: key)
     }
 
     public mutating func activate(_ workspace: Int) {
