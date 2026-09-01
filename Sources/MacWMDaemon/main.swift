@@ -306,7 +306,14 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     case let .resize(operation):
         guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
         let activeWorkspace = workspaces.value.activeWorkspace
-        let isTiledInBSP = focusedWindow.isTileable && maximizedFrames[focusedWindow.id] == nil && workspaces.value.layout(for: activeWorkspace, default: configuration.value.layout) == .bsp
+        let activeLayout = workspaces.value.layout(for: activeWorkspace, default: configuration.value.layout)
+        let isTiled = focusedWindow.isTileable && maximizedFrames[focusedWindow.id] == nil
+        if isTiled, activeLayout == .masterStack {
+            configuration.value.master.adjustRatio(by: operation == .grow ? 0.05 : -0.05)
+            applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+            return "ok"
+        }
+        let isTiledInBSP = isTiled && activeLayout == .bsp
         guard isTiledInBSP else {
             guard client.resize(focusedWindow, operation: operation) else { return "error: unable to resize window" }
             refresh(focusedWindow.processID, client: client, store: &store)
@@ -363,6 +370,17 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         guard workspaces.value.toggleSplit(containing: focusedWindow.id, in: workspaces.value.activeWorkspace) else { return "error: layout is not ready" }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+        return "ok"
+    case let .master(command):
+        switch command {
+        case .grow: configuration.value.master.adjustRatio(by: 0.05)
+        case .shrink: configuration.value.master.adjustRatio(by: -0.05)
+        case .addMaster: configuration.value.master.adjustCount(by: 1)
+        case .removeMaster: configuration.value.master.adjustCount(by: -1)
+        case let .orientation(orientation): configuration.value.master.orientation = orientation
+        case .nextOrientation: configuration.value.master.orientation = configuration.value.master.orientation.next
+        }
+        applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         return "ok"
     case let .preselect(direction):
         workspaces.value.preselect(direction, in: workspaces.value.activeWorkspace)
@@ -567,7 +585,7 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     if layout == .bsp, let tree = workspaces.validatedLayoutTree(for: windowIDs, in: workspaces.activeWorkspace, frame: layoutFrame) {
         frames = BSPLayout.frames(for: tree, in: layoutFrame, outerGap: gaps.outer, innerGap: gaps.inner)
     } else {
-        frames = LayoutEngine.frames(for: windowIDs, layout: layout, in: layoutFrame, outerGap: gaps.outer, innerGap: gaps.inner)
+        frames = LayoutEngine.frames(for: windowIDs, layout: layout, in: layoutFrame, outerGap: gaps.outer, innerGap: gaps.inner, master: config.master)
     }
     let monocleHiddenIDs = layout == .monocle ? monocleHiddenWindowIDs(tileableWindows, focusedID: store.focusedWindow?.id) : []
     var changes: [AXClient.FrameChange] = []

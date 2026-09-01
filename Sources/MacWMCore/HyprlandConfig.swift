@@ -66,6 +66,12 @@ public enum HyprlandConfig {
                 config.terminalBundleIdentifier = value
             case ("dwindle", "no_gaps_when_only"):
                 config.smartGaps = isTruthy(value)
+            case ("master", "orientation"):
+                guard let orientation = MasterOptions.Orientation(rawValue: value) else { return nil }
+                config.master.orientation = orientation
+            case ("master", "mfact"):
+                guard let ratio = Double(value), (0.1...0.9).contains(ratio) else { return nil }
+                config.master.ratio = ratio
             case ("cursor", "no_warps"):
                 config.cursorWarp = !isTruthy(value)
             case ("input", "follow_mouse"):
@@ -137,8 +143,22 @@ public enum HyprlandConfig {
             return first > 0 ? "resize grow" : "resize shrink"
         case "layoutmsg":
             let parts = argument.split(separator: " ").map(String.init)
-            guard parts.first == "preselect", let side = parts.dropFirst().first else { return nil }
-            return ["l", "r"].contains(side) ? "preselect vertical" : "preselect horizontal"
+            switch parts.first {
+            case "preselect":
+                guard let side = parts.dropFirst().first else { return nil }
+                return ["l", "r"].contains(side) ? "preselect vertical" : "preselect horizontal"
+            case "addmaster": return "master add"
+            case "removemaster": return "master remove"
+            case "orientationleft": return "master orientation left"
+            case "orientationright": return "master orientation right"
+            case "orientationtop": return "master orientation top"
+            case "orientationbottom": return "master orientation bottom"
+            case "orientationnext", "orientationcycle": return "master orientation next"
+            case "mfact":
+                guard let value = parts.dropFirst().first, let delta = Double(value) else { return nil }
+                return delta >= 0 ? "master grow" : "master shrink"
+            default: return nil
+            }
         default: return nil
         }
     }

@@ -12,6 +12,7 @@ public struct Config: Equatable, Sendable {
     public var smartGaps: Bool
     /// Move the pointer to windows focused from the keyboard, like Hyprland.
     public var cursorWarp: Bool
+    public var master: MasterOptions
     /// Name to command line, run through the login shell once when the daemon starts.
     public var autostart: [String: String]
     public var rules: [WindowRule]
@@ -21,7 +22,7 @@ public struct Config: Equatable, Sendable {
     /// Scratchpad name to bundle identifier, from `[scratchpads]`.
     public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
@@ -31,6 +32,7 @@ public struct Config: Equatable, Sendable {
         self.focusFollowsMouse = focusFollowsMouse
         self.smartGaps = smartGaps
         self.cursorWarp = cursorWarp
+        self.master = master
         self.autostart = autostart
         self.rules = rules
         self.hotkeys = hotkeys
@@ -169,6 +171,15 @@ public struct Config: Equatable, Sendable {
             case "general.cursor_warp":
                 guard let cursorWarp = Bool(value) else { return nil }
                 config.cursorWarp = cursorWarp
+            case "master.orientation":
+                guard let orientation = MasterOptions.Orientation(rawValue: unquoted(value)) else { return nil }
+                config.master.orientation = orientation
+            case "master.ratio":
+                guard let ratio = Double(value), (0.1...0.9).contains(ratio) else { return nil }
+                config.master.ratio = ratio
+            case "master.count":
+                guard let count = Int(value), count >= 1 else { return nil }
+                config.master.count = count
             case "general.smart_gaps":
                 guard let smartGaps = Bool(value) else { return nil }
                 config.smartGaps = smartGaps

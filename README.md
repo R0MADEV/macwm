@@ -85,6 +85,7 @@ All commands go through the `macwm` CLI and can be bound to any key under `[bind
 | `macwm toggle-float` | Toggle floating for the focused window | `Option+F` |
 | `macwm toggle-split` | Flip the split direction of the focused window's node in the BSP tree | none |
 | `macwm preselect vertical\|horizontal` | Choose how the next window opened in the workspace splits the focused one | none |
+| `macwm master grow\|shrink\|add\|remove\|orientation left\|right\|top\|bottom\|next` | Shape the master layout: master ratio, number of masters and the side they take | none |
 | `macwm close` | Press the focused window's close button | none |
 | `macwm toggle-terminal` | Show or hide the configured terminal covering the screen | `` ` `` (grave) |
 | `macwm scratchpad NAME` | Show or hide a scratchpad application configured under `[scratchpads]` | none |
@@ -334,6 +335,17 @@ bar = "sketchybar"
 ```
 
 `smart_gaps` removes every gap when a workspace shows a single tiled window, like `no_gaps_when_only` in Hyprland. `[autostart]` is the equivalent of `exec-once`: each command line runs once through your login shell when the daemon starts, in the order of the names.
+
+### Master layout
+
+```toml
+[master]
+orientation = "left"   # left, right, top or bottom
+ratio = 0.55           # share of the frame the masters take
+count = 1              # windows treated as masters
+```
+
+The `master` layout, `macwm layout master`, keeps the first `count` windows on the chosen side and stacks the rest. `resize grow` and `resize shrink` change the ratio while that layout is active, and the `master` commands change ratio, count and orientation at runtime until the next reload. In the Hyprland dialect, `master { orientation, mfact }` and `layoutmsg addmaster|removemaster|orientation*|mfact` map onto them.
 
 ### Cursor warp
 

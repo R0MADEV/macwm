@@ -29,6 +29,8 @@ public enum Command: Equatable, Sendable {
     case cycleFocus(forward: Bool)
     /// Flip the split direction of the focused window's parent node in the BSP tree.
     case toggleSplit
+    /// Master layout shape: ratio, master count and orientation.
+    case master(MasterCommand)
     /// Split direction for the next window opened in the active workspace.
     case preselect(SplitDirection)
     /// Run a shell command line through the user's login shell.
@@ -72,6 +74,7 @@ public enum Command: Equatable, Sendable {
             guard arguments.count == 2, let value, !value.isEmpty else { return nil }
             return .scratchpad(value)
         case "toggle-split": return arguments.count == 1 ? .toggleSplit : nil
+        case "master": return MasterCommand.parse(Array(arguments.dropFirst())).map(Command.master)
         case "preselect":
             guard arguments.count == 2, let value else { return nil }
             return SplitDirection(rawValue: value).map(Command.preselect)
@@ -112,6 +115,7 @@ public enum Command: Equatable, Sendable {
         case let .scratchpad(name): return "scratchpad \(name)"
         case let .cycleFocus(forward): return forward ? "focus next" : "focus prev"
         case .toggleSplit: return "toggle-split"
+        case let .master(command): return "master \(command.wireValue)"
         case let .preselect(direction): return "preselect \(direction.rawValue)"
         case let .exec(commandLine): return "exec \(commandLine)"
         }

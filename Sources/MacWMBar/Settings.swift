@@ -264,6 +264,11 @@ struct GeneralTab: View {
                 Text("Left").tag(BarPosition.left)
                 Text("Right").tag(BarPosition.right)
             }
+            Picker("Master side", selection: $model.config.master.orientation) {
+                ForEach(MasterOptions.Orientation.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+            }
+            Stepper("Master ratio: \(Int(model.config.master.ratio * 100))%", value: $model.config.master.ratio, in: 0.1...0.9, step: 0.05)
+            Stepper("Masters: \(model.config.master.count)", value: $model.config.master.count, in: 1...4)
             TextField("Terminal bundle identifier", text: $model.config.terminalBundleIdentifier)
                 .font(.system(.body, design: .monospaced))
         }

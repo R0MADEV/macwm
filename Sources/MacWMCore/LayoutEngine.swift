@@ -75,7 +75,7 @@ public enum LayoutEngine {
         return isLoneWindow ? (0, 0) : (outer, inner)
     }
 
-    public static func frames(for windows: [WindowID], layout: LayoutKind, in frame: Frame, outerGap: Double = 8, innerGap: Double = 8) -> [WindowID: Frame] {
+    public static func frames(for windows: [WindowID], layout: LayoutKind, in frame: Frame, outerGap: Double = 8, innerGap: Double = 8, master: MasterOptions = MasterOptions()) -> [WindowID: Frame] {
         guard !windows.isEmpty else { return [:] }
         let outer = max(0, outerGap)
         let gap = max(0, innerGap)
@@ -88,13 +88,45 @@ public enum LayoutEngine {
         case .stack:
             return verticalFrames(windows, in: usable, gap: gap)
         case .masterStack:
-            guard windows.count > 1 else { return [windows[0]: usable] }
-            let available = max(0, usable.width - gap)
-            let masterWidth = available * 0.5
-            var result = [windows[0]: Frame(x: usable.x, y: usable.y, width: masterWidth, height: usable.height)]
-            result.merge(verticalFrames(Array(windows.dropFirst()), in: Frame(x: usable.x + masterWidth + gap, y: usable.y, width: available - masterWidth, height: usable.height), gap: gap)) { _, new in new }
-            return result
+            return masterFrames(windows, in: usable, gap: gap, options: master)
         }
+    }
+
+    private static func masterFrames(_ windows: [WindowID], in frame: Frame, gap: Double, options: MasterOptions) -> [WindowID: Frame] {
+        let masters = Array(windows.prefix(options.count))
+        let stack = Array(windows.dropFirst(options.count))
+        guard !stack.isEmpty else { return stackFrames(masters, in: frame, gap: gap, vertical: options.orientation == .left || options.orientation == .right) }
+        let masterArea: Frame
+        let stackArea: Frame
+        switch options.orientation {
+        case .left, .right:
+            let available = max(0, frame.width - gap)
+            let masterWidth = available * options.ratio
+            let masterX = options.orientation == .left ? frame.x : frame.x + (available - masterWidth) + gap
+            let stackX = options.orientation == .left ? frame.x + masterWidth + gap : frame.x
+            masterArea = Frame(x: masterX, y: frame.y, width: masterWidth, height: frame.height)
+            stackArea = Frame(x: stackX, y: frame.y, width: available - masterWidth, height: frame.height)
+        case .top, .bottom:
+            let available = max(0, frame.height - gap)
+            let masterHeight = available * options.ratio
+            let masterY = options.orientation == .top ? frame.y : frame.y + (available - masterHeight) + gap
+            let stackY = options.orientation == .top ? frame.y + masterHeight + gap : frame.y
+            masterArea = Frame(x: frame.x, y: masterY, width: frame.width, height: masterHeight)
+            stackArea = Frame(x: frame.x, y: stackY, width: frame.width, height: available - masterHeight)
+        }
+        let sideBySide = options.orientation == .left || options.orientation == .right
+        return stackFrames(masters, in: masterArea, gap: gap, vertical: sideBySide)
+            .merging(stackFrames(stack, in: stackArea, gap: gap, vertical: sideBySide)) { _, new in new }
+    }
+
+    /// Windows in a column (vertical) or a row.
+    private static func stackFrames(_ windows: [WindowID], in frame: Frame, gap: Double, vertical: Bool) -> [WindowID: Frame] {
+        guard !windows.isEmpty else { return [:] }
+        guard !vertical else { return verticalFrames(windows, in: frame, gap: gap) }
+        let width = max(0, (frame.width - gap * Double(max(0, windows.count - 1))) / Double(windows.count))
+        return Dictionary(uniqueKeysWithValues: windows.enumerated().map { index, id in
+            (id, Frame(x: frame.x + Double(index) * (width + gap), y: frame.y, width: width, height: frame.height))
+        })
     }
 
     private static func verticalFrames(_ windows: [WindowID], in frame: Frame, gap: Double) -> [WindowID: Frame] {
