@@ -55,6 +55,49 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
         }
     }
 
+    public var lastLeaf: WindowID {
+        switch self {
+        case let .leaf(window): return window
+        case let .split(_, _, _, second): return second.lastLeaf
+        }
+    }
+
+    /// Replaces the `target` leaf with a split holding `target` and the new window.
+    public func inserting(_ id: WindowID, at target: WindowID, direction: SplitDirection, ratio: Double = 0.5) -> WindowTree {
+        switch self {
+        case let .leaf(window):
+            guard window == target else { return self }
+            return .split(direction: direction, ratio: ratio, first: .leaf(window), second: .leaf(id))
+        case let .split(splitDirection, splitRatio, first, second):
+            return .split(
+                direction: splitDirection,
+                ratio: splitRatio,
+                first: first.inserting(id, at: target, direction: direction, ratio: ratio),
+                second: second.inserting(id, at: target, direction: direction, ratio: ratio)
+            )
+        }
+    }
+
+    /// Removes a leaf; its sibling takes the parent's place. Nil when nothing is left.
+    public func removing(_ id: WindowID) -> WindowTree? {
+        switch self {
+        case let .leaf(window):
+            return window == id ? nil : self
+        case let .split(direction, ratio, first, second):
+            switch (first.removing(id), second.removing(id)) {
+            case (nil, nil): return nil
+            case (nil, let remaining?), (let remaining?, nil): return remaining
+            case (let newFirst?, let newSecond?): return .split(direction: direction, ratio: ratio, first: newFirst, second: newSecond)
+            }
+        }
+    }
+
+    /// Dwindle rule: a wide leaf is split side by side, a tall one top and bottom.
+    public func automaticSplitDirection(for id: WindowID, in frame: Frame) -> SplitDirection {
+        let leafFrame = frames(in: frame)[id] ?? frame
+        return leafFrame.width >= leafFrame.height ? .vertical : .horizontal
+    }
+
     /// Flips the direction of the split directly containing `id`, Hyprland's togglesplit.
     public func togglingSplit(containing id: WindowID) -> WindowTree {
         guard case let .split(direction, ratio, first, second) = self, windowIDs.contains(id) else { return self }

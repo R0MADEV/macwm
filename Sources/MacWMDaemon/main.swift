@@ -273,6 +273,9 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
         return "ok"
+    case let .preselect(direction):
+        workspaces.value.preselect(direction, in: workspaces.value.activeWorkspace)
+        return "ok"
     case let .exec(commandLine):
         launch(commandLine)
         return "ok"
@@ -440,7 +443,7 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     let windowIDs = tileableWindows.map(\.id)
     let layout = workspaces.layout(for: workspaces.activeWorkspace, default: config.layout)
     let frames: [WindowID: Frame]
-    if layout == .bsp, let tree = workspaces.validatedLayoutTree(for: windowIDs, in: workspaces.activeWorkspace) {
+    if layout == .bsp, let tree = workspaces.validatedLayoutTree(for: windowIDs, in: workspaces.activeWorkspace, frame: layoutFrame) {
         frames = BSPLayout.frames(for: tree, in: layoutFrame, outerGap: config.outerGap, innerGap: config.innerGap)
     } else {
         frames = LayoutEngine.frames(for: windowIDs, layout: layout, in: layoutFrame, outerGap: config.outerGap, innerGap: config.innerGap)

@@ -80,6 +80,7 @@ All commands go through the `macwm` CLI and can be bound to any key under `[bind
 | `macwm maximize` | Toggle between maximized and the previous frame | `Option+M` |
 | `macwm toggle-float` | Toggle floating for the focused window | `Option+F` |
 | `macwm toggle-split` | Flip the split direction of the focused window's node in the BSP tree | none |
+| `macwm preselect vertical\|horizontal` | Choose how the next window opened in the workspace splits the focused one | none |
 | `macwm close` | Press the focused window's close button | none |
 | `macwm toggle-terminal` | Show or hide the configured terminal covering the screen | `` ` `` (grave) |
 | `macwm scratchpad NAME` | Show or hide a scratchpad application configured under `[scratchpads]` | none |
@@ -94,6 +95,8 @@ Commands without a default hotkey are meant to be bound in `[binds]`, for exampl
 "alt+tab" = "focus next"
 "alt+shift+tab" = "focus prev"
 "alt+e" = "toggle-split"
+"alt+v" = "preselect vertical"
+"alt+s" = "preselect horizontal"
 "alt+return" = "exec open -a iTerm"
 "alt+w" = "scratchpad chat"
 "alt+r" = "mode resize"
@@ -168,6 +171,8 @@ Default hotkeys. `Option` is the `alt` modifier in the configuration.
 Every default can be changed under `[keys]`, and any command in the table above can be bound to any key or grouped into a mode under `[binds]`; see Custom Hotkeys. Inside a mode only that mode's bindings apply until you leave it, and the bar shows the mode name next to the workspace.
 
 When BSP is active, `move` is structural: it swaps the focused window with the nearest tileable window in that direction and recalculates all cells. It does not translate a window by a fixed pixel distance.
+
+The BSP tree keeps its structure while windows come and go, like Hyprland's dwindle layout: a new window splits the window you last focused, side by side when that window is wider than tall and top to bottom otherwise, or in the direction chosen with `preselect`; a closed window hands its space back to its sibling. Ratios changed with `resize`, swaps made with `move` and directions flipped with `toggle-split` therefore survive opening and closing windows.
 
 The BSP layout is recursive and supports any number of tileable windows. With three windows it produces one half-height/full-height area and two stacked areas; with four windows it produces a balanced four-cell layout. Every cell is constrained to the available visible frame and gaps.
 

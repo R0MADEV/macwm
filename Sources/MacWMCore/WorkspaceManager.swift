@@ -8,6 +8,7 @@ public struct WorkspaceManager: Sendable {
     private var trees: [Int: WindowTree]
     private var layouts: [Int: LayoutKind]
     private var lastFocused: [Int: WindowID] = [:]
+    private var preselections: [Int: SplitDirection] = [:]
 
     public init(count: Int = 9, assignments: [WindowKey: Int] = [:], activeWorkspace: Int = 1, trees: [Int: WindowTree] = [:], layouts: [Int: LayoutKind] = [:]) {
         let normalizedCount = max(1, count)
@@ -74,23 +75,58 @@ public struct WorkspaceManager: Sendable {
 
     public func storedLayoutTree(for workspace: Int) -> WindowTree? { trees[workspace] }
 
-    public func layoutTree(for windows: [WindowID], in workspace: Int) -> WindowTree? {
-        guard isValid(workspace), !windows.isEmpty else { return nil }
-        guard let tree = trees[workspace], tree.containsExactly(windows) else {
-            return BSPLayout.tree(for: windows)
-        }
-        return tree
+    /// Only used to pick automatic split directions when no real frame is known.
+    public static let referenceFrame = Frame(x: 0, y: 0, width: 1600, height: 1000)
+
+    /// The next window opened in the workspace splits its target in this direction.
+    public mutating func preselect(_ direction: SplitDirection, in workspace: Int) {
+        guard isValid(workspace) else { return }
+        preselections[workspace] = direction
     }
 
-    public mutating func validatedLayoutTree(for windows: [WindowID], in workspace: Int) -> WindowTree? {
+    public func layoutTree(for windows: [WindowID], in workspace: Int, frame: Frame = WorkspaceManager.referenceFrame) -> WindowTree? {
+        guard isValid(workspace), !windows.isEmpty else { return nil }
+        return reconciledTree(for: windows, in: workspace, frame: frame).tree
+    }
+
+    public mutating func validatedLayoutTree(for windows: [WindowID], in workspace: Int, frame: Frame = WorkspaceManager.referenceFrame) -> WindowTree? {
         guard isValid(workspace) else { return nil }
-        let tree = layoutTree(for: windows, in: workspace)
-        if let tree {
-            trees[workspace] = tree
-        } else {
+        guard !windows.isEmpty else {
             trees.removeValue(forKey: workspace)
+            return nil
         }
-        return tree
+        let result = reconciledTree(for: windows, in: workspace, frame: frame)
+        trees[workspace] = result.tree
+        if result.usedPreselection { preselections.removeValue(forKey: workspace) }
+        return result.tree
+    }
+
+    /// Keeps the stored structure like Hyprland's dwindle layout: closed windows
+    /// collapse their split and new windows split the last focused leaf, or the
+    /// last leaf when nothing was focused. A missing or corrupt tree is rebuilt.
+    private func reconciledTree(for windows: [WindowID], in workspace: Int, frame: Frame) -> (tree: WindowTree?, usedPreselection: Bool) {
+        let windowSet = Set(windows)
+        let hasDuplicates = windowSet.count != windows.count
+        guard !hasDuplicates, let stored = trees[workspace], stored.leafCount == stored.windowIDs.count else {
+            return (BSPLayout.tree(for: windows), false)
+        }
+        var tree: WindowTree? = stored
+        for id in stored.windowIDs where !windowSet.contains(id) { tree = tree?.removing(id) }
+        var preselection = preselections[workspace]
+        var usedPreselection = false
+        for id in windows where !stored.windowIDs.contains(id) {
+            guard let current = tree else {
+                tree = .leaf(id)
+                continue
+            }
+            let focused = lastFocused[workspace].flatMap { current.windowIDs.contains($0) ? $0 : nil }
+            let target = focused ?? current.lastLeaf
+            let direction = preselection ?? current.automaticSplitDirection(for: target, in: frame)
+            usedPreselection = usedPreselection || preselection != nil
+            preselection = nil
+            tree = current.inserting(id, at: target, direction: direction)
+        }
+        return (tree, usedPreselection)
     }
 
     public mutating func setLayoutTree(_ tree: WindowTree?, for workspace: Int) {
@@ -157,11 +193,4 @@ public struct WorkspaceManager: Sendable {
         activeWorkspace = workspace
     }
 
-}
-
-private extension WindowTree {
-    func containsExactly(_ windows: [WindowID]) -> Bool {
-        let windowSet = Set(windows)
-        return !windows.isEmpty && windows.count == windowSet.count && leafCount == windows.count && windowIDs == windowSet
-    }
 }

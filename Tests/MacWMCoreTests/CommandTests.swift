@@ -36,3 +36,10 @@ import Testing
     #expect(Command.scratchpad("chat").wireValue == "scratchpad chat")
     #expect(Command.parse(["scratchpad"]) == nil)
 }
+
+@Test func parsesPreselectCommand() {
+    #expect(Command.parse(["preselect", "vertical"]) == .preselect(.vertical))
+    #expect(Command.parse(["preselect", "horizontal"]) == .preselect(.horizontal))
+    #expect(Command.preselect(.vertical).wireValue == "preselect vertical")
+    #expect(Command.parse(["preselect", "diagonal"]) == nil)
+}

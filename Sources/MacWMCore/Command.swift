@@ -17,6 +17,8 @@ public enum Command: Equatable, Sendable {
     case cycleFocus(forward: Bool)
     /// Flip the split direction of the focused window's parent node in the BSP tree.
     case toggleSplit
+    /// Split direction for the next window opened in the active workspace.
+    case preselect(SplitDirection)
     /// Run a shell command line through the user's login shell.
     case exec(String)
     /// Switches the hotkey engine to a named mode; "default" leaves any mode.
@@ -50,6 +52,9 @@ public enum Command: Equatable, Sendable {
             guard arguments.count == 2, let value, !value.isEmpty else { return nil }
             return .scratchpad(value)
         case "toggle-split": return arguments.count == 1 ? .toggleSplit : nil
+        case "preselect":
+            guard arguments.count == 2, let value else { return nil }
+            return SplitDirection(rawValue: value).map(Command.preselect)
         case "exec":
             let commandLine = arguments.dropFirst().joined(separator: " ")
             return commandLine.isEmpty ? nil : .exec(commandLine)
@@ -83,6 +88,7 @@ public enum Command: Equatable, Sendable {
         case let .scratchpad(name): return "scratchpad \(name)"
         case let .cycleFocus(forward): return forward ? "focus next" : "focus prev"
         case .toggleSplit: return "toggle-split"
+        case let .preselect(direction): return "preselect \(direction.rawValue)"
         case let .exec(commandLine): return "exec \(commandLine)"
         }
     }
@@ -105,6 +111,23 @@ private extension Direction {
         case .right: return "right"
         case .up: return "up"
         case .down: return "down"
+        }
+    }
+}
+
+private extension SplitDirection {
+    init?(rawValue: String) {
+        switch rawValue {
+        case "vertical": self = .vertical
+        case "horizontal": self = .horizontal
+        default: return nil
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .vertical: return "vertical"
+        case .horizontal: return "horizontal"
         }
     }
 }
