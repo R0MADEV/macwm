@@ -93,7 +93,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
             print("macwm: tracking \(store.windows.count) windows")
         case .windowCreated(_):
             guard !layoutGuard.isApplying else { return }
-            let windows = client.windows(for: application).filter { $0.bundleIdentifier != terminalController.bundleIdentifier }
+            let windows = managedWindows(client, for: application)
             store.replace(
                 windows: windows,
                 forProcessID: UInt32(application.processIdentifier)
@@ -108,6 +108,11 @@ let observerRegistry = AXObserverRegistry { processID, event in
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
             notifyBar(workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
             print("macwm: tracking \(store.windows.count) windows")
+        case .windowVisibilityChanged:
+            guard !layoutGuard.isApplying else { return }
+            refresh(UInt32(application.processIdentifier), client: client, store: &store)
+            applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+            notifyBar(workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
         case .environmentChanged:
             guard !layoutGuard.isApplying else { return }
             let windows = managedWindows(client)
@@ -252,6 +257,10 @@ private func managedWindows(_ client: AXClient) -> [ManagedWindow] {
     client.visibleWindows().filter { $0.bundleIdentifier != terminalController.bundleIdentifier }
 }
 
+private func managedWindows(_ client: AXClient, for application: NSRunningApplication) -> [ManagedWindow] {
+    client.windows(for: application).filter { $0.bundleIdentifier != terminalController.bundleIdentifier }
+}
+
 private func persistedMaximizedFrames(store: WindowStore, maximizedFrames: [WindowID: Frame]) -> [WindowKey: Frame] {
     Dictionary(uniqueKeysWithValues: store.windows.compactMap { window in
         guard let frame = maximizedFrames[window.id] else { return nil }
@@ -267,7 +276,7 @@ private func syncFocusedWindow(client: AXClient, store: inout WindowStore) {
 
 private func refresh(_ processID: UInt32, client: AXClient, store: inout WindowStore) {
     guard let application = NSRunningApplication(processIdentifier: pid_t(processID)) else { return }
-    store.replace(windows: client.windows(for: application), forProcessID: processID)
+    store.replace(windows: managedWindows(client, for: application), forProcessID: processID)
 }
 
 private func switchWorkspace(
@@ -370,10 +379,15 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     } else {
         frames = LayoutEngine.frames(for: windowIDs, layout: layout, in: layoutFrame, outerGap: config.outerGap, innerGap: config.innerGap)
     }
-var appliedCount = 0
+    var appliedCount = 0
+    let monocleHiddenIDs = layout == .monocle ? monocleHiddenWindowIDs(tileableWindows, focusedID: store.focusedWindow?.id) : []
 
-for window in tileableWindows {
-    guard let frame = frames[window.id] else { continue }
+    for window in tileableWindows {
+        if monocleHiddenIDs.contains(window.id) {
+            park(window, keepsFrame: false, client: client, store: &store)
+            continue
+        }
+        guard let frame = frames[window.id] else { continue }
         let accessibilityFrame = Frame(
             x: frame.x,
             y: screenFrame.maxY - frame.y - frame.height,
@@ -384,9 +398,10 @@ for window in tileableWindows {
         store.updateFrame(accessibilityFrame, for: window.id)
         appliedCount += 1
     }
-    if layout == .monocle {
-        let visibleID = tileableWindows.first(where: { $0.id == store.focusedWindow?.id })?.id ?? tileableWindows.first?.id
-        for window in tileableWindows { _ = client.setHidden(window.id != visibleID, for: window) }
-    }
     print("macwm: applied \(layout.rawValue) to \(appliedCount)/\(tileableWindows.count) windows")
+}
+
+private func monocleHiddenWindowIDs(_ windows: [ManagedWindow], focusedID: WindowID?) -> Set<WindowID> {
+    let visibleID = windows.first(where: { $0.id == focusedID })?.id ?? windows.first?.id
+    return Set(windows.map(\.id).filter { $0 != visibleID })
 }

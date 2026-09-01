@@ -45,7 +45,8 @@ final class AXClient {
                 for: $0,
                 processID: application.processIdentifier,
                 appName: application.localizedName ?? "",
-                bundleIdentifier: application.bundleIdentifier ?? ""
+                bundleIdentifier: application.bundleIdentifier ?? "",
+                isApplicationHidden: application.isHidden
             )
         }
     }
@@ -56,7 +57,8 @@ final class AXClient {
             for: window,
             processID: application.processIdentifier,
             appName: application.localizedName ?? "",
-            bundleIdentifier: application.bundleIdentifier ?? ""
+            bundleIdentifier: application.bundleIdentifier ?? "",
+            isApplicationHidden: application.isHidden
         )
     }
 
@@ -176,10 +178,11 @@ final class AXClient {
         return accessibilityFrame(for: screen.frame)
     }
 
-    private func snapshot(for element: AXUIElement, processID: pid_t, appName: String, bundleIdentifier: String) -> ManagedWindow? {
+    private func snapshot(for element: AXUIElement, processID: pid_t, appName: String, bundleIdentifier: String, isApplicationHidden: Bool) -> ManagedWindow? {
         let title: String = value(for: element, attribute: kAXTitleAttribute) ?? appName
         let subrole: String = value(for: element, attribute: kAXSubroleAttribute) ?? ""
         let frame = frame(of: element)
+        let isMinimized: Bool = value(for: element, attribute: kAXMinimizedAttribute) ?? false
         let isFloating = rules.first { $0.matches(bundleIdentifier: bundleIdentifier, title: title, subrole: subrole) }?.float ?? false
         return ManagedWindow(
             id: WindowID(processID: UInt32(processID), elementHash: Int(truncatingIfNeeded: CFHash(element))),
@@ -190,6 +193,7 @@ final class AXClient {
             subrole: subrole,
             bundleIdentifier: bundleIdentifier,
             isFloating: isFloating,
+            isHidden: isMinimized || isApplicationHidden,
             windowNumber: windowNumber(processID: processID, title: title, frame: frame)
         )
     }

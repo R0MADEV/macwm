@@ -20,6 +20,8 @@ public struct ManagedWindow: Equatable, Sendable {
     public let bundleIdentifier: String
     public let windowNumber: UInt32?
     public let isFloating: Bool
+    /// Minimized, or owned by an application hidden with Cmd+H. Hidden windows leave the layout.
+    public let isHidden: Bool
 
     public init(
         id: WindowID,
@@ -30,6 +32,7 @@ public struct ManagedWindow: Equatable, Sendable {
         subrole: String = "AXStandardWindow",
         bundleIdentifier: String = "",
         isFloating: Bool = false,
+        isHidden: Bool = false,
         windowNumber: UInt32? = nil
     ) {
         self.id = id
@@ -41,12 +44,13 @@ public struct ManagedWindow: Equatable, Sendable {
         self.bundleIdentifier = bundleIdentifier
         self.windowNumber = windowNumber
         self.isFloating = isFloating
+        self.isHidden = isHidden
     }
 
     public var isTileable: Bool {
         let nonTileableSubroles = ["AXDialog", "AXSystemDialog", "AXFloatingWindow"]
         let isAuxiliaryWindow = nonTileableSubroles.contains(subrole)
-        return !isAuxiliaryWindow && !isFloating
+        return !isAuxiliaryWindow && !isFloating && !isHidden
     }
 
     public var persistentKey: WindowKey {
@@ -105,6 +109,7 @@ public struct WindowStore: Sendable {
             subrole: window.subrole,
             bundleIdentifier: window.bundleIdentifier,
             isFloating: window.isFloating,
+            isHidden: window.isHidden,
             windowNumber: window.windowNumber
         )
     }
@@ -120,6 +125,7 @@ public struct WindowStore: Sendable {
             subrole: window.subrole,
             bundleIdentifier: window.bundleIdentifier,
             isFloating: floating,
+            isHidden: window.isHidden,
             windowNumber: window.windowNumber
         )
     }
@@ -169,6 +175,7 @@ public struct WindowStore: Sendable {
             subrole: window.subrole,
             bundleIdentifier: window.bundleIdentifier,
             isFloating: !window.isFloating,
+            isHidden: window.isHidden,
             windowNumber: window.windowNumber
         )
         values[focusedID] = updated
@@ -186,6 +193,7 @@ public struct WindowStore: Sendable {
             subrole: window.subrole,
             bundleIdentifier: window.bundleIdentifier,
             isFloating: existing.isFloating,
+            isHidden: window.isHidden,
             windowNumber: window.windowNumber
         )
     }

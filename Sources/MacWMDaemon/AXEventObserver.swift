@@ -6,6 +6,7 @@ final class AXEventObserver {
         case windowCreated(AXUIElement)
         case windowDestroyed(AXUIElement)
         case focusedWindowChanged(AXUIElement)
+        case windowVisibilityChanged(AXUIElement)
         case environmentChanged
     }
 
@@ -23,7 +24,9 @@ final class AXEventObserver {
         let notifications: [String] = [
             kAXWindowCreatedNotification,
             kAXUIElementDestroyedNotification,
-            kAXFocusedWindowChangedNotification
+            kAXFocusedWindowChangedNotification,
+            kAXWindowMiniaturizedNotification,
+            kAXWindowDeminiaturizedNotification
         ]
 
         for notification in notifications {
@@ -58,6 +61,8 @@ final class AXEventObserver {
             handler(.windowDestroyed(element))
         case kAXFocusedWindowChangedNotification:
             handler(.focusedWindowChanged(element))
+        case kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification:
+            handler(.windowVisibilityChanged(element))
         default:
             return
         }
@@ -81,6 +86,8 @@ final class AXObserverRegistry: @unchecked Sendable {
         let names: [Notification.Name] = [
             NSWorkspace.didLaunchApplicationNotification,
             NSWorkspace.didTerminateApplicationNotification,
+            NSWorkspace.didHideApplicationNotification,
+            NSWorkspace.didUnhideApplicationNotification,
             NSWorkspace.didWakeNotification,
             NSWorkspace.willSleepNotification
         ]
