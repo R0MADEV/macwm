@@ -88,3 +88,19 @@ func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
     #expect(Config.parse("[general]\nfocus_follows_mouse = true")?.focusFollowsMouse == true)
     #expect(Config.parse("[general]\nfocus_follows_mouse = maybe") == nil)
 }
+
+@Test func parsesSmartGapsAndAutostart() {
+    let config = Config.parse("""
+    [general]
+    smart_gaps = true
+
+    [autostart]
+    bar = "sketchybar"
+    borders = "borders width=4"
+    """)
+
+    #expect(config?.smartGaps == true)
+    #expect(Config().smartGaps == false)
+    #expect(config?.autostart == ["bar": "sketchybar", "borders": "borders width=4"])
+    #expect(Config.parse("[autostart]\nbar = \"\"") == nil)
+}

@@ -105,3 +105,15 @@ import Testing
     manager.remove(WindowID(1))
     #expect(manager.lastFocusedWindow(in: 2) == nil)
 }
+
+@Test func remembersThePreviousWorkspaceForBackAndForth() {
+    var manager = WorkspaceManager(count: 5, activeWorkspace: 1)
+
+    #expect(manager.previousWorkspace == nil)
+    manager.activate(3)
+    #expect(manager.previousWorkspace == 1)
+    manager.activate(3)
+    #expect(manager.previousWorkspace == 1)
+    manager.activate(5)
+    #expect(manager.previousWorkspace == 3)
+}

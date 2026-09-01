@@ -69,6 +69,12 @@ public enum BSPLayout {
 }
 
 public enum LayoutEngine {
+    /// Smart gaps: a lone tiled window fills the whole frame.
+    public static func gaps(outer: Double, inner: Double, smart: Bool, windowCount: Int) -> (outer: Double, inner: Double) {
+        let isLoneWindow = smart && windowCount == 1
+        return isLoneWindow ? (0, 0) : (outer, inner)
+    }
+
     public static func frames(for windows: [WindowID], layout: LayoutKind, in frame: Frame, outerGap: Double = 8, innerGap: Double = 8) -> [WindowID: Frame] {
         guard !windows.isEmpty else { return [:] }
         let outer = max(0, outerGap)

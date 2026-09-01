@@ -1,6 +1,8 @@
 public struct WorkspaceManager: Sendable {
     public let count: Int
     public private(set) var activeWorkspace: Int
+    /// Workspace active before the current one, for back-and-forth switching.
+    public private(set) var previousWorkspace: Int?
     private var assignments: [WindowID: Int]
     private var keyAssignments: [WindowKey: Int]
     private var keyOwners: [WindowKey: WindowID]
@@ -201,7 +203,8 @@ public struct WorkspaceManager: Sendable {
     }
 
     public mutating func activate(_ workspace: Int) {
-        guard isValid(workspace) else { return }
+        guard isValid(workspace), workspace != activeWorkspace else { return }
+        previousWorkspace = activeWorkspace
         activeWorkspace = workspace
     }
 

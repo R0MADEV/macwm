@@ -143,6 +143,11 @@ let observerRegistry = AXObserverRegistry { processID, event in
         }
 }
 observerRegistry.start()
+for name in runtimeConfiguration.value.autostart.keys.sorted() {
+    guard let commandLine = runtimeConfiguration.value.autostart[name] else { continue }
+    print("macwm: autostart \(name): \(commandLine)")
+    launch(commandLine)
+}
 
 guard let hotkeys = HotkeyManager(keybinds: keybinds, handler: { command in
     _ = execute(command, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: runtimeConfiguration, workspaces: workspaces)
@@ -236,6 +241,16 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         return "ok"
     case let .workspace(workspace):
         return switchWorkspace(workspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: configuration.value)
+    case .previousWorkspace:
+        guard let previous = workspaces.value.previousWorkspace else { return "error: no previous workspace" }
+        return switchWorkspace(previous, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: configuration.value)
+    case .center:
+        guard let focusedWindow = store.focusedWindow, let frame = focusedWindow.frame else { return "error: no focused window" }
+        guard !focusedWindow.isTileable, let visible = client.visibleScreenFrame(for: focusedWindow) else { return "error: focused window is tiled" }
+        let centered = frame.centered(in: visible)
+        guard client.setFrame(centered, for: focusedWindow) else { return "error: unable to move window" }
+        store.updateFrame(centered, for: focusedWindow.id)
+        return "ok"
     case let .sendToWorkspace(workspace):
         guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
         guard workspaces.value.isValid(workspace) else { return "error: invalid workspace" }
@@ -253,6 +268,11 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         return "ok"
     case let .move(direction):
         guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
+        guard focusedWindow.isTileable else {
+            guard client.move(focusedWindow, direction: direction) else { return "error: unable to move window" }
+            refresh(focusedWindow.processID, client: client, store: &store)
+            return "ok"
+        }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         let candidateIDs = activeWorkspaceWindowIDs(store: store, workspaces: workspaces.value, tileableOnly: true)
         guard focusedWindow.isTileable, let target = store.window(in: direction, among: candidateIDs) else { return "error: no tileable window in direction" }
@@ -483,10 +503,11 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     let windowIDs = tileableWindows.map(\.id)
     let layout = workspaces.layout(for: workspaces.activeWorkspace, default: config.layout)
     let frames: [WindowID: Frame]
+    let gaps = LayoutEngine.gaps(outer: config.outerGap, inner: config.innerGap, smart: config.smartGaps, windowCount: windowIDs.count)
     if layout == .bsp, let tree = workspaces.validatedLayoutTree(for: windowIDs, in: workspaces.activeWorkspace, frame: layoutFrame) {
-        frames = BSPLayout.frames(for: tree, in: layoutFrame, outerGap: config.outerGap, innerGap: config.innerGap)
+        frames = BSPLayout.frames(for: tree, in: layoutFrame, outerGap: gaps.outer, innerGap: gaps.inner)
     } else {
-        frames = LayoutEngine.frames(for: windowIDs, layout: layout, in: layoutFrame, outerGap: config.outerGap, innerGap: config.innerGap)
+        frames = LayoutEngine.frames(for: windowIDs, layout: layout, in: layoutFrame, outerGap: gaps.outer, innerGap: gaps.inner)
     }
     var appliedCount = 0
     let monocleHiddenIDs = layout == .monocle ? monocleHiddenWindowIDs(tileableWindows, focusedID: store.focusedWindow?.id) : []

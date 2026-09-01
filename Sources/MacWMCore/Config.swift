@@ -8,6 +8,10 @@ public struct Config: Equatable, Sendable {
     public var terminalBundleIdentifier: String
     public var autoTile: Bool
     public var focusFollowsMouse: Bool
+    /// No gaps at all when a workspace shows a single tiled window.
+    public var smartGaps: Bool
+    /// Name to command line, run through the login shell once when the daemon starts.
+    public var autostart: [String: String]
     public var rules: [WindowRule]
     public var hotkeys: [String: String]
     /// Mode name to binding text to command text, from `[binds]` and `[binds.<mode>]`.
@@ -15,7 +19,7 @@ public struct Config: Equatable, Sendable {
     /// Scratchpad name to bundle identifier, from `[scratchpads]`.
     public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
@@ -23,6 +27,8 @@ public struct Config: Equatable, Sendable {
         self.innerGap = innerGap
         self.autoTile = autoTile
         self.focusFollowsMouse = focusFollowsMouse
+        self.smartGaps = smartGaps
+        self.autostart = autostart
         self.rules = rules
         self.hotkeys = hotkeys
         self.binds = binds
@@ -72,6 +78,13 @@ public struct Config: Equatable, Sendable {
             if section == "keys", key.hasPrefix("workspace_") {
                 guard let workspace = Int(key.dropFirst("workspace_".count)), (1...9).contains(workspace), !value.isEmpty else { return nil }
                 config.hotkeys[key] = unquoted(value)
+                continue
+            }
+
+            if section == "autostart" {
+                let commandLine = unquoted(value)
+                guard !key.isEmpty, !commandLine.isEmpty else { return nil }
+                config.autostart[key] = commandLine
                 continue
             }
 
@@ -141,6 +154,9 @@ public struct Config: Equatable, Sendable {
             case "general.auto_tile":
                 guard let autoTile = Bool(value) else { return nil }
                 config.autoTile = autoTile
+            case "general.smart_gaps":
+                guard let smartGaps = Bool(value) else { return nil }
+                config.smartGaps = smartGaps
             case "general.focus_follows_mouse":
                 guard let focusFollowsMouse = Bool(value) else { return nil }
                 config.focusFollowsMouse = focusFollowsMouse

@@ -26,3 +26,12 @@ import Testing
     #expect(frames.count == windows.count)
     #expect(frames.values.allSatisfy { $0.width > 0 && $0.height > 0 })
 }
+
+@Test func smartGapsDropAllGapsForASingleWindow() {
+    let frame = Frame(x: 0, y: 0, width: 1000, height: 600)
+
+    #expect(LayoutEngine.gaps(outer: 8, inner: 8, smart: true, windowCount: 1) == (0, 0))
+    #expect(LayoutEngine.gaps(outer: 8, inner: 8, smart: true, windowCount: 2) == (8, 8))
+    #expect(LayoutEngine.gaps(outer: 8, inner: 8, smart: false, windowCount: 1) == (8, 8))
+    #expect(BSPLayout.frames(for: [WindowID(1)], in: frame, outerGap: 0, innerGap: 0)[WindowID(1)] == frame)
+}

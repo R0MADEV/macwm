@@ -8,6 +8,9 @@ focus_follows_mouse = false
 # Position of macwm-bar: top, bottom, left, or right.
 position = "top"
 
+# No gaps when a workspace shows a single window.
+# smart_gaps = true
+
 [terminal]
 # Bundle identifier of the terminal launched by the global toggle.
 # Terminal.app: com.apple.Terminal

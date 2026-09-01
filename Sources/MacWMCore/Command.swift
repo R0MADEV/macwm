@@ -9,6 +9,10 @@ public enum Command: Equatable, Sendable {
     case reload
     case layout(LayoutKind)
     case workspace(Int)
+    /// Back to the workspace that was active before the current one.
+    case previousWorkspace
+    /// Center the focused floating window on its screen.
+    case center
     case sendToWorkspace(Int)
     case focus(Direction)
     case move(Direction)
@@ -49,7 +53,11 @@ public enum Command: Equatable, Sendable {
             guard arguments.count == 2, let value else { return nil }
             let layoutValue = value == "master" ? "master-stack" : value
             return LayoutKind(rawValue: layoutValue).map(Command.layout)
-        case "workspace": return arguments.count == 2 ? value.flatMap(Int.init).map(Command.workspace) : nil
+        case "workspace":
+            guard arguments.count == 2, let value else { return nil }
+            if value == "previous" { return .previousWorkspace }
+            return Int(value).map(Command.workspace)
+        case "center": return arguments.count == 1 ? .center : nil
         case "send-to-workspace": return arguments.count == 2 ? value.flatMap(Int.init).map(Command.sendToWorkspace) : nil
         case "focus":
             guard arguments.count == 2, let value else { return nil }
@@ -86,6 +94,8 @@ public enum Command: Equatable, Sendable {
         case .reload: return "reload"
         case let .layout(layout): return "layout \(layout.rawValue)"
         case let .workspace(workspace): return "workspace \(workspace)"
+        case .previousWorkspace: return "workspace previous"
+        case .center: return "center"
         case let .sendToWorkspace(workspace): return "send-to-workspace \(workspace)"
         case let .focus(direction): return "focus \(direction.rawValue)"
         case let .move(direction): return "move \(direction.rawValue)"

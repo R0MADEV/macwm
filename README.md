@@ -73,10 +73,12 @@ All commands go through the `macwm` CLI and can be bound to any key under `[bind
 | `macwm reload` | Reload `~/.config/macwm/config.toml`: rules, hotkeys, modes, scratchpads, terminal, bar | none |
 | `macwm layout bsp\|stack\|monocle\|master` | Set the layout of the active workspace | none |
 | `macwm workspace N` | Switch to workspace `N` (1 to 9) and focus the window you last used there | `Option+N` |
+| `macwm workspace previous` | Back to the workspace you came from, Hyprland's back-and-forth | none |
 | `macwm send-to-workspace N` | Send the focused window to workspace `N` | `Option+Shift+N` |
 | `macwm focus left\|down\|up\|right` | Focus the nearest visible window in that direction | `Option+H/J/K/L` |
 | `macwm focus next\|prev` | Cycle focus through the visible windows of the workspace, wrapping around | none |
-| `macwm move left\|down\|up\|right` | Swap the focused window with its neighbor in that direction | `Option+Shift+H/J/K/L` |
+| `macwm move left\|down\|up\|right` | Tiled: swap the focused window with its neighbor in that direction; floating: nudge it 40 points | `Option+Shift+H/J/K/L` |
+| `macwm center` | Center the focused floating window on its screen | none |
 | `macwm resize grow\|shrink` | Tiled in BSP: give the window 5% more or less of its split; floating: grow or shrink by 40 points | `Option+R` / `Option+Shift+R` |
 | `macwm maximize` | Toggle between maximized and the previous frame | `Option+M` |
 | `macwm toggle-float` | Toggle floating for the focused window | `Option+F` |
@@ -266,6 +268,19 @@ Windows can be handled with the mouse, like `bindm` in Hyprland, by holding `Opt
 - right button on a floating window resizes it from its bottom-right corner; on a tiled window it moves the splits around it, so dragging right makes it wider and dragging down makes it taller.
 
 Windows that macwm does not manage are not affected, so `Option+click` keeps working in them.
+
+### Smart gaps and autostart
+
+```toml
+[general]
+smart_gaps = true
+
+[autostart]
+borders = "borders width=4"
+bar = "sketchybar"
+```
+
+`smart_gaps` removes every gap when a workspace shows a single tiled window, like `no_gaps_when_only` in Hyprland. `[autostart]` is the equivalent of `exec-once`: each command line runs once through your login shell when the daemon starts, in the order of the names.
 
 ### Focus follows mouse
 

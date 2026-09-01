@@ -51,3 +51,10 @@ import Testing
     #expect(Command.query(.windows).wireValue == "query windows")
     #expect(Command.parse(["query", "moon"]) == nil)
 }
+
+@Test func parsesEverydayDispatchers() {
+    #expect(Command.parse(["workspace", "previous"]) == .previousWorkspace)
+    #expect(Command.previousWorkspace.wireValue == "workspace previous")
+    #expect(Command.parse(["center"]) == .center)
+    #expect(Command.center.wireValue == "center")
+}
