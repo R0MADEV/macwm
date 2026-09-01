@@ -123,7 +123,10 @@ let observerRegistry = AXObserverRegistry { processID, event in
                 workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace, restorePersisted: false)
                 if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
                 let belongsToActiveWorkspace = workspaces.value.workspace(for: window.id) == workspaces.value.activeWorkspace
-                if !belongsToActiveWorkspace { park(window, keepsFrame: !window.isTileable, client: client, store: &store) }
+                if !belongsToActiveWorkspace, let (change, liveFrame) = parkChange(for: window, keepsFrame: !window.isTileable, client: client), client.apply([change]).contains(window.id) {
+                    store.updateFrame(change.frame, for: window.id)
+                    if let liveFrame { parkedFrames.value[window.id] = liveFrame }
+                }
             }
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
@@ -472,38 +475,45 @@ private func launch(_ commandLine: String) {
 private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: inout WindowStore, workspaces: WorkspaceManager, maximizedFrames: [WindowID: Frame]) {
     layoutGuard.isApplying = true
     defer { layoutGuard.isApplying = false }
+    var changes: [AXClient.FrameChange] = []
+    var framesToRemember: [WindowID: Frame] = [:]
     for window in store.windows where !window.isHidden {
         let belongsToWorkspace = workspaces.workspace(for: window.id) == workspace
         let isTiled = window.isTileable && maximizedFrames[window.id] == nil
         guard belongsToWorkspace else {
-            park(window, keepsFrame: !isTiled, client: client, store: &store)
+            guard let (change, liveFrame) = parkChange(for: window, keepsFrame: !isTiled, client: client) else { continue }
+            changes.append(change)
+            if let liveFrame { framesToRemember[window.id] = liveFrame }
             continue
         }
-        unpark(window, willBeTiled: isTiled, client: client, store: &store)
+        if let change = unparkChange(for: window, willBeTiled: isTiled, client: client) { changes.append(change) }
+    }
+    let applied = client.apply(changes)
+    for change in changes where applied.contains(change.window.id) {
+        store.updateFrame(change.frame, for: change.window.id)
+        if let remembered = framesToRemember[change.window.id] { parkedFrames.value[change.window.id] = remembered }
     }
 }
 
-/// `keepsFrame` saves the live frame so floating and maximized windows come back
-/// where the user left them; tiled windows are re-placed by the layout instead.
-private func park(_ window: ManagedWindow, keepsFrame: Bool, client: AXClient, store: inout WindowStore) {
-    guard let storedFrame = window.frame, let screen = client.screenFrame(for: window), !storedFrame.isParked(in: screen) else { return }
+/// The move that parks a window, plus the live frame to remember when the
+/// window keeps its own size. Nil when the window is already parked.
+private func parkChange(for window: ManagedWindow, keepsFrame: Bool, client: AXClient) -> (AXClient.FrameChange, Frame?)? {
+    guard let storedFrame = window.frame, let screen = client.screenFrame(for: window), !storedFrame.isParked(in: screen) else { return nil }
     // Only windows still on screen need the live frame; asking a busy or
     // heavy application for it on every switch is what made switching slow.
     let frame = keepsFrame ? client.currentFrame(for: window) ?? storedFrame : storedFrame
-    guard !frame.isParked(in: screen) else { return }
-    if keepsFrame { parkedFrames.value[window.id] = frame }
-    let target = frame.parked(in: screen)
-    guard client.setFrame(target, for: window) else { return }
-    store.updateFrame(target, for: window.id)
+    guard !frame.isParked(in: screen) else { return nil }
+    return (AXClient.FrameChange(window: window, frame: frame.parked(in: screen), positionOnly: true), keepsFrame ? frame : nil)
 }
 
-private func unpark(_ window: ManagedWindow, willBeTiled: Bool, client: AXClient, store: inout WindowStore) {
-    guard let frame = window.frame, let screen = client.screenFrame(for: window), frame.isParked(in: screen) else { return }
+/// The move that brings a parked floating or maximized window back; tiled
+/// windows are placed by the layout pass instead.
+private func unparkChange(for window: ManagedWindow, willBeTiled: Bool, client: AXClient) -> AXClient.FrameChange? {
+    guard let frame = window.frame, let screen = client.screenFrame(for: window), frame.isParked(in: screen) else { return nil }
     let savedFrame = parkedFrames.value.removeValue(forKey: window.id)
-    guard !willBeTiled else { return }
+    guard !willBeTiled else { return nil }
     let restored = savedFrame ?? frame.centered(in: client.visibleScreenFrame(for: window) ?? screen)
-    guard client.setFrame(restored, for: window) else { return }
-    store.updateFrame(restored, for: window.id)
+    return AXClient.FrameChange(window: window, frame: restored, positionOnly: true)
 }
 
 private func notifyBar(store: WindowStore, workspace: Int, layout: String, position: BarPosition = .top, workspaces: WorkspaceManager? = nil) {
@@ -540,20 +550,21 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     } else {
         frames = LayoutEngine.frames(for: windowIDs, layout: layout, in: layoutFrame, outerGap: gaps.outer, innerGap: gaps.inner)
     }
-    var appliedCount = 0
     let monocleHiddenIDs = layout == .monocle ? monocleHiddenWindowIDs(tileableWindows, focusedID: store.focusedWindow?.id) : []
-
+    var changes: [AXClient.FrameChange] = []
     for window in tileableWindows {
         if monocleHiddenIDs.contains(window.id) {
-            park(window, keepsFrame: false, client: client, store: &store)
+            if let (change, _) = parkChange(for: window, keepsFrame: false, client: client) { changes.append(change) }
             continue
         }
         guard let frame = frames[window.id] else { continue }
-        guard client.setFrame(frame, for: window) else { continue }
-        store.updateFrame(frame, for: window.id)
-        appliedCount += 1
+        changes.append(AXClient.FrameChange(window: window, frame: frame, positionOnly: false))
     }
-    print("macwm: applied \(layout.rawValue) to \(appliedCount)/\(tileableWindows.count) windows")
+    let applied = client.apply(changes)
+    for change in changes where applied.contains(change.window.id) {
+        store.updateFrame(change.frame, for: change.window.id)
+    }
+    print("macwm: applied \(layout.rawValue) to \(applied.count)/\(tileableWindows.count) windows")
 }
 
 private func monocleHiddenWindowIDs(_ windows: [ManagedWindow], focusedID: WindowID?) -> Set<WindowID> {

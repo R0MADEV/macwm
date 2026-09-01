@@ -3,7 +3,8 @@ import AppKit
 import CoreGraphics
 import MacWMCore
 
-final class AXClient {
+/// Mutable state is only touched on the main thread; `apply` runs read-only work on workers.
+final class AXClient: @unchecked Sendable {
     private var rules: [WindowRule]
     private var barPosition: BarPosition
 
@@ -179,6 +180,79 @@ final class AXClient {
     func close(_ window: ManagedWindow) -> Bool {
         guard let element = element(for: window), let button: AXUIElement = value(for: element, attribute: kAXCloseButtonAttribute) else { return false }
         return AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
+    }
+
+    /// One window move for `apply`. Parking and restoring only change the
+    /// position, which halves the calls into the application.
+    struct FrameChange {
+        let window: ManagedWindow
+        let frame: Frame
+        let positionOnly: Bool
+    }
+
+    /// Applies many frame changes at once. Applications answer Accessibility
+    /// calls one at a time, so changes are grouped per application, each
+    /// group runs on its own thread and the window elements of an application
+    /// are fetched once instead of once per window. Returns the windows that
+    /// accepted their change.
+    func apply(_ changes: [FrameChange]) -> Set<WindowID> {
+        let groups = Dictionary(grouping: changes) { $0.window.processID }.map { $0.value }
+        guard !groups.isEmpty else { return [] }
+        let applied = AppliedWindows()
+        DispatchQueue.concurrentPerform(iterations: groups.count) { index in
+            let group = groups[index]
+            let elements = windowElements(forProcess: pid_t(group[0].window.processID))
+            var succeeded: [WindowID] = []
+            for change in group {
+                guard let element = elements[change.window.id] else { continue }
+                if setFrame(change.frame, on: element, positionOnly: change.positionOnly, describing: change.window) {
+                    succeeded.append(change.window.id)
+                }
+            }
+            applied.add(succeeded)
+        }
+        return applied.ids
+    }
+
+    private final class AppliedWindows: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: Set<WindowID> = []
+        var ids: Set<WindowID> { lock.withLock { stored } }
+        func add(_ ids: [WindowID]) { lock.withLock { stored.formUnion(ids) } }
+    }
+
+    private func windowElements(forProcess processID: pid_t) -> [WindowID: AXUIElement] {
+        let applicationElement = AXUIElementCreateApplication(processID)
+        guard let elements: [AXUIElement] = value(for: applicationElement, attribute: kAXWindowsAttribute) else { return [:] }
+        return Dictionary(elements.map { (WindowID(processID: UInt32(processID), elementHash: Int(truncatingIfNeeded: CFHash($0))), $0) }) { first, _ in first }
+    }
+
+    private func setFrame(_ frame: Frame, on element: AXUIElement, positionOnly: Bool, describing window: ManagedWindow) -> Bool {
+        var point = CGPoint(x: frame.x, y: frame.y)
+        guard let position = AXValueCreate(.cgPoint, &point) else { return false }
+        let positionResult = AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, position)
+        if positionOnly {
+            if positionResult != .success { fputs("macwm: setPosition failed for \(window.appName) - \(window.title) (status \(positionResult.rawValue))\n", stderr) }
+            return positionResult == .success
+        }
+        var size = CGSize(width: frame.width, height: frame.height)
+        guard let dimensions = AXValueCreate(.cgSize, &size) else { return false }
+        if positionResult != .success {
+            // Some apps reject position-first updates; retry size-first.
+            let sizeResult = AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, dimensions)
+            let retryResult = AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, position)
+            guard sizeResult == .success, retryResult == .success else {
+                fputs("macwm: setFrame failed for \(window.appName) - \(window.title) (position \(positionResult.rawValue), size \(sizeResult.rawValue), retry \(retryResult.rawValue))\n", stderr)
+                return false
+            }
+            return true
+        }
+        let sizeResult = AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, dimensions)
+        guard sizeResult == .success else {
+            fputs("macwm: setFrame size failed for \(window.appName) - \(window.title) (status \(sizeResult.rawValue))\n", stderr)
+            return false
+        }
+        return true
     }
 
     func setHidden(_ hidden: Bool, for window: ManagedWindow) -> Bool {
