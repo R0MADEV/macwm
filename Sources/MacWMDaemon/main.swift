@@ -111,7 +111,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
 }
 observerRegistry.start()
 
-guard let hotkeys = HotkeyManager(config: runtimeConfiguration.value, handler: { action in
+guard let hotkeys = HotkeyManager(runtimeConfiguration: runtimeConfiguration, handler: { action in
     handle(action, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: runtimeConfiguration, workspaces: workspaces)
 }) else {
     fputs("macwm: unable to register global hotkeys. Enable Input Monitoring for macwm-daemon.\n", stderr)

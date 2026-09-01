@@ -16,11 +16,11 @@ final class HotkeyManager: @unchecked Sendable {
     private var eventTap: CFMachPort? = nil
     private var runLoopSource: CFRunLoopSource? = nil
     private let handler: (Action) -> Void
-    private let config: Config
+    private let runtimeConfiguration: DaemonConfiguration
 
-    init?(config: Config, handler: @escaping (Action) -> Void) {
+    init?(runtimeConfiguration: DaemonConfiguration, handler: @escaping (Action) -> Void) {
         self.handler = handler
-        self.config = config
+        self.runtimeConfiguration = runtimeConfiguration
         let keyDownMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
         let context = Unmanaged.passUnretained(self).toOpaque()
         guard let eventTap = CGEvent.tapCreate(
@@ -48,7 +48,7 @@ final class HotkeyManager: @unchecked Sendable {
     }
 
     fileprivate func handle(_ event: CGEvent) -> Unmanaged<CGEvent>? {
-        guard let action = Self.action(for: event, config: config) else { return Unmanaged.passUnretained(event) }
+        guard let action = Self.action(for: event, config: runtimeConfiguration.value) else { return Unmanaged.passUnretained(event) }
         DispatchQueue.main.async { [weak self] in
             self?.handler(action)
         }
