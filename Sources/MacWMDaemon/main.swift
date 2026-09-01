@@ -21,6 +21,7 @@ let latencyActivity = ProcessInfo.processInfo.beginActivity(
 )
 let runtimeConfiguration = DaemonConfiguration(ConfigLoader.load())
 let keybinds = DaemonKeybinds(runtimeConfiguration.value.keybindEngine())
+let mouseTargets = MouseTargets()
 let client = AXClient(rules: runtimeConfiguration.value.rules)
 let workspacePersistence = WorkspacePersistence()
 let persistedState = workspacePersistence.loadState()
@@ -137,6 +138,11 @@ guard let hotkeys = HotkeyManager(keybinds: keybinds, handler: { command in
     fputs("macwm: unable to register global hotkeys. Enable Input Monitoring for macwm-daemon.\n", stderr)
     exit(EXIT_FAILURE)
 }
+
+let mouse = MouseManager(client: client, targets: mouseTargets, onDragEnd: { id, frame in
+    store.updateFrame(frame, for: id)
+})
+if mouse == nil { fputs("macwm: unable to register the mouse tap; Option+drag on floating windows is disabled.\n", stderr) }
 
 guard let server = UnixSocketServer(path: socketPath, handler: { command in
     execute(command, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: runtimeConfiguration, workspaces: workspaces)
@@ -404,6 +410,10 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     guard !layoutGuard.isApplying else { return }
     layoutGuard.isApplying = true
     defer { layoutGuard.isApplying = false }
+    mouseTargets.update(store.windows.filter { window in
+        let isVisibleInActiveWorkspace = !window.isHidden && workspaces.workspace(for: window.id) == workspaces.activeWorkspace
+        return window.isFloating && isVisibleInActiveWorkspace
+    })
     guard config.autoTile || force else { return }
     guard let screen = NSScreen.screens.first else { return }
     let visibleFrame = screen.visibleFrame

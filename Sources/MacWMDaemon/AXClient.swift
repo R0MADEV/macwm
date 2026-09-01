@@ -155,6 +155,20 @@ final class AXClient {
         return true
     }
 
+    /// Identifier of the window under a screen point, resolved through the
+    /// system-wide Accessibility hit test, so it matches the ids in the store.
+    func windowID(at point: CGPoint) -> WindowID? {
+        var hit: AXUIElement?
+        let systemWide = AXUIElementCreateSystemWide()
+        guard AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &hit) == .success, let hit else { return nil }
+        let role: String = value(for: hit, attribute: kAXRoleAttribute) ?? ""
+        let windowElement: AXUIElement? = role == kAXWindowRole ? hit : value(for: hit, attribute: kAXWindowAttribute)
+        guard let windowElement else { return nil }
+        var processID: pid_t = 0
+        guard AXUIElementGetPid(windowElement, &processID) == .success else { return nil }
+        return WindowID(processID: UInt32(processID), elementHash: Int(truncatingIfNeeded: CFHash(windowElement)))
+    }
+
     /// Presses the window's close button, so the application runs its own close logic.
     func close(_ window: ManagedWindow) -> Bool {
         guard let element = element(for: window), let button: AXUIElement = value(for: element, attribute: kAXCloseButtonAttribute) else { return false }

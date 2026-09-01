@@ -229,6 +229,10 @@ Alacritty     org.alacritty
 
 The toggle launches the terminal when it is not running, minimizes its visible window, and restores, activates and resizes a minimized or hidden window to cover the whole current screen. The terminal is excluded from workspace assignments, hiding and tiling, so macwm never moves or hides it during workspace changes. macOS provides no public API to keep another application's window always on top or visible on every Space; this limitation cannot be removed without private APIs.
 
+### Mouse
+
+Floating windows can be handled with the mouse, like `bindm` in Hyprland: hold `Option` and drag with the left button to move a floating window, or with the right button to resize it from its bottom-right corner. Tiled windows are not affected, so `Option+click` keeps working in applications when the window under the cursor is tiled.
+
 ### Scratchpads
 
 Any application can be toggled like the drop-down terminal. Give it a name under `[scratchpads]` and bind `scratchpad <name>`:
