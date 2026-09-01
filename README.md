@@ -238,6 +238,10 @@ macwm reload
 
 Copy `example-config.toml` to `~/.config/macwm/config.toml`, edit it, then run `macwm reload`.
 
+### Settings window
+
+The gear at the right end of `macwm-bar` opens a settings window. Its Hotkeys tab lists every binding per mode: click a key field and press the shortcut to record it, pick or type the command, add or delete rows; rows that share a key or name an unknown command turn red and block saving. The General tab covers layout, gaps, smart gaps, focus follows mouse, bar position and terminal; the Apps tab adds floating rules and scratchpads from the list of running applications. Save writes `config.toml`, which the daemon applies immediately. The file is regenerated, so comments in it are not kept. When `macwm.conf` is in use the window is read-only.
+
 ### Hyprland dialect
 
 If `~/.config/macwm/macwm.conf` exists it is used instead of `config.toml`, and it is read as a Hyprland configuration, so most of a Hyprland dotfile works after changing window classes to bundle identifiers:

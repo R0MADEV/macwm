@@ -20,6 +20,7 @@ final class BarController: NSObject {
     private var previousCPUTicks: [UInt32]?
     private var previousNetworkBytes: (input: UInt64, output: UInt64)?
     private var activeWorkspace = 1
+    private let settings = SettingsWindowController()
     private var mode = "default"
     private var workspaceWindowCounts: [Int: Int] = [:]
 
@@ -169,6 +170,14 @@ final class BarController: NSObject {
         clockStack.addArrangedSubview(clockLabel)
         statusStack.addArrangedSubview(clockStack)
         statusLabels.append(clockLabel)
+
+        let settingsButton = NSButton(image: NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings") ?? NSImage(), target: self, action: #selector(openSettings))
+        settingsButton.isBordered = false
+        settingsButton.contentTintColor = NSColor(calibratedWhite: 0.62, alpha: 1)
+        settingsButton.toolTip = "macwm settings"
+        settingsButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        settingsButton.heightAnchor.constraint(equalToConstant: 16).isActive = true
+        statusStack.addArrangedSubview(settingsButton)
         statusStack.setContentHuggingPriority(.required, for: workspaceAxis)
         statusStack.setContentCompressionResistancePriority(.required, for: workspaceAxis)
         leftSpacer.setContentHuggingPriority(.defaultLow, for: workspaceAxis)
@@ -192,6 +201,13 @@ final class BarController: NSObject {
         activeWorkspace = Self.value("workspace", from: response) ?? 1
         mode = Self.value("mode", from: response) ?? "default"
         updateContent()
+    }
+
+    @objc private func openSettings() {
+        MainActor.assumeIsolated {
+            settings.reset()
+            settings.show()
+        }
     }
 
     @objc private func selectWorkspace(_ sender: NSButton) {
