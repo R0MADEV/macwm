@@ -412,9 +412,14 @@ private func switchWorkspace(
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts, barPosition: config.barPosition)
             notifyBar(store: store, workspace: workspace, layout: workspaces.value.layout(for: workspace, default: config.layout).rawValue, position: config.barPosition, workspaces: workspaces.value)
 
+    let started = DispatchTime.now().uptimeNanoseconds
     showWorkspaceWindows(workspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
+    let parked = DispatchTime.now().uptimeNanoseconds
     applyTiling(client: client, store: &store, config: config, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+    let tiled = DispatchTime.now().uptimeNanoseconds
     focusLastWindow(in: workspace, client: client, store: &store, workspaces: workspaces)
+    let focused = DispatchTime.now().uptimeNanoseconds
+    reportSlowSwitch(to: workspace, park: parked &- started, tile: tiled &- parked, focus: focused &- tiled)
     workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
     return "ok"
 }
@@ -428,6 +433,14 @@ private func focusLastWindow(in workspace: Int, client: AXClient, store: inout W
           let element = client.element(for: target), client.focus(element) else { return }
     store.setFocusedWindow(target.id)
     workspaces.value.recordFocus(target.id)
+}
+
+/// Diagnostics: phases of a workspace switch that took longer than 40 ms in total.
+private func reportSlowSwitch(to workspace: Int, park: UInt64, tile: UInt64, focus: UInt64) {
+    let milliseconds = { (nanoseconds: UInt64) in Double(nanoseconds) / 1_000_000 }
+    let total = milliseconds(park + tile + focus)
+    guard total > 40 else { return }
+    fputs(String(format: "macwm: slow switch to %d: park %.0f ms, tile %.0f ms, focus %.0f ms\n", workspace, milliseconds(park), milliseconds(tile), milliseconds(focus)), stderr)
 }
 
 private func activeWorkspaceWindowIDs(store: WindowStore, workspaces: WorkspaceManager, tileableOnly: Bool) -> Set<WindowID> {
