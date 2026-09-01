@@ -32,11 +32,19 @@ final class AXClient {
 
     func visibleWindows() -> [ManagedWindow] {
         NSWorkspace.shared.runningApplications
-            .filter { !$0.isTerminated && $0.activationPolicy != .prohibited }
+            .filter { !$0.isTerminated }
             .flatMap { windows(for: $0) }
     }
 
+    /// Only regular applications, the ones with a Dock icon, are managed. Menu
+    /// bar and accessory apps such as macwm-bar or border drawers keep their
+    /// own windows untouched.
+    func isManageable(_ application: NSRunningApplication) -> Bool {
+        application.activationPolicy == .regular
+    }
+
     func windows(for application: NSRunningApplication) -> [ManagedWindow] {
+        guard isManageable(application) else { return [] }
         let element = AXUIElementCreateApplication(application.processIdentifier)
         guard let elements: [AXUIElement] = value(for: element, attribute: kAXWindowsAttribute) else { return [] }
 
@@ -52,7 +60,7 @@ final class AXClient {
     }
 
     func focusedWindow(for application: NSRunningApplication) -> ManagedWindow? {
-        guard let window = focusedWindowElement(for: application) else { return nil }
+        guard isManageable(application), let window = focusedWindowElement(for: application) else { return nil }
         return snapshot(
             for: window,
             processID: application.processIdentifier,

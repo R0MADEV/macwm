@@ -253,11 +253,10 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     }
 }
 
-/// Windows macwm never tiles, hides or parks: the configured terminal and its own bar.
+/// The configured terminal is never tiled, hidden or parked; accessory apps
+/// such as the bar are already filtered out by AXClient.
 private func isManaged(_ window: ManagedWindow) -> Bool {
-    let isTerminal = window.bundleIdentifier == terminalController.bundleIdentifier
-    let isOwnBar = window.bundleIdentifier == "com.macwm.bar"
-    return !isTerminal && !isOwnBar
+    window.bundleIdentifier != terminalController.bundleIdentifier
 }
 
 private func managedWindows(_ client: AXClient) -> [ManagedWindow] {
