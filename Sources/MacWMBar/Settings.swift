@@ -269,6 +269,10 @@ struct GeneralTab: View {
             }
             Stepper("Master ratio: \(Int(model.config.master.ratio * 100))%", value: $model.config.master.ratio, in: 0.1...0.9, step: 0.05)
             Stepper("Masters: \(model.config.master.count)", value: $model.config.master.count, in: 1...4)
+            Toggle("Draw a border around the focused window", isOn: $model.config.border.enabled)
+            Stepper("Border width: \(Int(model.config.border.width))", value: $model.config.border.width, in: 1...12)
+            TextField("Border color (#rrggbb or #rrggbbaa)", text: $model.config.border.color)
+                .font(.system(.body, design: .monospaced))
             TextField("Terminal bundle identifier", text: $model.config.terminalBundleIdentifier)
                 .font(.system(.body, design: .monospaced))
         }

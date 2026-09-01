@@ -97,6 +97,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
             store.setFocusedWindow(window.id)
             workspaces.value.recordFocus(window.id)
             print("macwm: focused \(window.appName) - \(window.title)")
+            updateFocusBorder(store: store, config: runtimeConfiguration.value, workspaces: workspaces.value)
             if isNewWindow {
                 if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
                 applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
@@ -180,6 +181,7 @@ let mouse = MouseManager(
     targets: mouseTargets,
     onFloatingDragEnd: { id, frame in
         store.updateFrame(frame, for: id)
+        updateFocusBorder(store: store, config: runtimeConfiguration.value, workspaces: workspaces.value)
     },
     onTiledResize: { id, deltaX, deltaY in
         guard let layoutFrame = client.layoutFrame() else { return }
@@ -238,6 +240,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         guard let updatedConfiguration = ConfigLoader.loadValidated() else { return "error: invalid configuration" }
         configuration.value = updatedConfiguration
         keybinds.replace(updatedConfiguration.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
+        updateFocusBorder(store: store, config: updatedConfiguration, workspaces: workspaces.value)
         focusFollowsMouse.setEnabled(updatedConfiguration.focusFollowsMouse)
         client.updateRules(configuration.value.rules)
         client.updateBarPosition(configuration.value.barPosition)
@@ -291,6 +294,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         store.setFocusedWindow(target.id)
         workspaces.value.recordFocus(target.id)
         warpCursor(to: target, enabled: configuration.value.cursorWarp)
+        updateFocusBorder(store: store, config: configuration.value, workspaces: workspaces.value)
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
         print("macwm: focused \(target.appName) - \(target.title)")
         return "ok"
@@ -368,6 +372,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         store.setFocusedWindow(target.id)
         workspaces.value.recordFocus(target.id)
         warpCursor(to: target, enabled: configuration.value.cursorWarp)
+        updateFocusBorder(store: store, config: configuration.value, workspaces: workspaces.value)
         return "ok"
     case .toggleSplit:
         guard let focusedWindow = store.focusedWindow, focusedWindow.isTileable else { return "error: no tiled window focused" }
@@ -457,6 +462,7 @@ private func switchWorkspace(
     focusLastWindow(in: workspace, client: client, store: &store, workspaces: workspaces, warpCursor: config.cursorWarp)
     let focused = DispatchTime.now().uptimeNanoseconds
     reportSlowSwitch(to: workspace, park: parked &- started, tile: tiled &- parked, focus: focused &- tiled)
+    updateFocusBorder(store: store, config: config, workspaces: workspaces.value)
     workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
     return "ok"
 }
@@ -488,6 +494,15 @@ private func reportSlowSwitch(to workspace: Int, park: UInt64, tile: UInt64, foc
     let total = milliseconds(park + tile + focus)
     guard total > 40 else { return }
     fputs(String(format: "macwm: slow switch to %d: park %.0f ms, tile %.0f ms, focus %.0f ms\n", workspace, milliseconds(park), milliseconds(tile), milliseconds(focus)), stderr)
+}
+
+/// Draws the border around the focused window when it is visible in the
+/// active workspace; hides it otherwise.
+private func updateFocusBorder(store: WindowStore, config: Config, workspaces: WorkspaceManager) {
+    let focused = store.focusedWindow
+    let isVisible = focused.map { !$0.isHidden && workspaces.workspace(for: $0.id) == workspaces.activeWorkspace } ?? false
+    let frame = isVisible ? focused?.frame : nil
+    MainActor.assumeIsolated { focusBorder.update(options: config.border, focused: frame) }
 }
 
 private func activeWorkspaceWindowIDs(store: WindowStore, workspaces: WorkspaceManager, tileableOnly: Bool) -> Set<WindowID> {
@@ -607,6 +622,7 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
         store.updateFrame(change.frame, for: change.window.id)
     }
     print("macwm: applied \(layout.rawValue) to \(applied.count)/\(tileableWindows.count) windows")
+    updateFocusBorder(store: store, config: config, workspaces: workspaces)
 }
 
 private func monocleHiddenWindowIDs(_ windows: [ManagedWindow], focusedID: WindowID?) -> Set<WindowID> {

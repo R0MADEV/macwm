@@ -336,6 +336,17 @@ bar = "sketchybar"
 
 `smart_gaps` removes every gap when a workspace shows a single tiled window, like `no_gaps_when_only` in Hyprland. `[autostart]` is the equivalent of `exec-once`: each command line runs once through your login shell when the daemon starts, in the order of the names.
 
+### Focus border
+
+```toml
+[border]
+enabled = true
+width = 3
+color = "#5e81ac"
+```
+
+macwm can draw a frame around the focused window, the way Hyprland's `col.active_border` does, without any extra application. It is a click-through overlay that follows focus, tiling, workspace switches and mouse drags. Off by default; if you run JankyBorders or similar, leave it off. In the Hyprland dialect `general { border_size, col.active_border }` map onto it, taking the first color of a gradient.
+
 ### Master layout
 
 ```toml
