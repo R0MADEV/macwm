@@ -74,6 +74,6 @@ import Testing
     #expect(manager.workspace(for: window.id) == 1)
 
     let ruled = ManagedWindow(id: WindowID(2), processID: 10, title: "Mail", bundleIdentifier: "com.apple.mail")
-    manager.register(ruled, rules: [WindowRule(bundleIdentifier: "com.apple.mail", workspace: 2)], defaultWorkspace: 1, restorePersisted: false)
+    manager.register(ruled, rules: [WindowRule(bundleIdentifier: "com.apple.mail", float: false, workspace: 2)], defaultWorkspace: 1, restorePersisted: false)
     #expect(manager.workspace(for: ruled.id) == 2)
 }
