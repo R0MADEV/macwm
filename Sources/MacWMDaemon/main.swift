@@ -19,7 +19,12 @@ let latencyActivity = ProcessInfo.processInfo.beginActivity(
     options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
     reason: "macwm global hotkeys and window management"
 )
+// The daemon owns windows of its own, the focus border, so it runs as an
+// accessory application: no Dock icon, and never managed by itself.
+let application = NSApplication.shared
+application.setActivationPolicy(.accessory)
 let runtimeConfiguration = DaemonConfiguration(ConfigLoader.load())
+let focusBorder = FocusBorder()
 let keybinds = DaemonKeybinds(runtimeConfiguration.value.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
 let keyboardLayoutObserver = DistributedNotificationCenter.default().addObserver(forName: KeyboardLayout.changedNotification, object: nil, queue: .main) { _ in
     keybinds.replace(runtimeConfiguration.value.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
@@ -208,7 +213,7 @@ guard let server = UnixSocketServer(path: socketPath, handler: { command in
     exit(EXIT_FAILURE)
 }
 
-RunLoop.main.run()
+application.run()
 
 withExtendedLifetime((hotkeys, server, observerRegistry)) {}
 

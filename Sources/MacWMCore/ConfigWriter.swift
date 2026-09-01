@@ -93,6 +93,7 @@ public extension Config {
         lines.append("cursor_warp = \(cursorWarp)")
         lines.append(contentsOf: ["", "[display]", "outer_gap = \(number(outerGap))", "inner_gap = \(number(innerGap))"])
         lines.append(contentsOf: ["", "[master]", "orientation = \"\(master.orientation.rawValue)\"", "ratio = \(master.ratio)", "count = \(master.count)"])
+        lines.append(contentsOf: ["", "[border]", "enabled = \(border.enabled)", "width = \(number(border.width))", "color = \"\(border.color)\""])
         lines.append(contentsOf: ["", "[bar]", "position = \"\(barPosition.rawValue)\""])
         lines.append(contentsOf: ["", "[terminal]", "bundle_id = \"\(terminalBundleIdentifier)\""])
         lines.append(contentsOf: ["", "[keys]"])

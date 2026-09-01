@@ -110,3 +110,20 @@ func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
     #expect(Config.parse("[general]\ncursor_warp = false")?.cursorWarp == false)
     #expect(HyprlandConfig.parse("cursor {\n no_warps = true\n}")?.cursorWarp == false)
 }
+
+@Test func parsesBorderOptionsAndColors() {
+    let config = Config.parse("[border]\nenabled = true\nwidth = 4\ncolor = \"#33ccff\"")
+    #expect(config?.border == BorderOptions(enabled: true, width: 4, color: "#33ccff"))
+    #expect(Config().border.enabled == false)
+    #expect(Config.parse("[border]\nwidth = -1") == nil)
+    #expect(Config.parse("[border]\ncolor = \"blue\"") == nil)
+
+    #expect(BorderOptions.rgba("#33ccff") != nil)
+    let rgba = BorderOptions.rgba("#33ccff80")!
+    #expect(abs(rgba.red - 0.2) < 0.01 && abs(rgba.green - 0.8) < 0.01 && abs(rgba.blue - 1) < 0.01 && abs(rgba.alpha - 0.5) < 0.01)
+    #expect(BorderOptions.rgba("zzz") == nil)
+
+    let hyprland = HyprlandConfig.parse("general {\n border_size = 2\n col.active_border = rgba(33ccffee)\n}")
+    #expect(hyprland?.border == BorderOptions(enabled: true, width: 2, color: "#33ccffee"))
+    #expect(HyprlandConfig.parse("general {\n col.active_border = rgb(ff0000) rgb(00ff00) 45deg\n}")?.border.color == "#ff0000")
+}

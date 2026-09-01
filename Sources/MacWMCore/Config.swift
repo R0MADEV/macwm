@@ -13,6 +13,7 @@ public struct Config: Equatable, Sendable {
     /// Move the pointer to windows focused from the keyboard, like Hyprland.
     public var cursorWarp: Bool
     public var master: MasterOptions
+    public var border: BorderOptions
     /// Name to command line, run through the login shell once when the daemon starts.
     public var autostart: [String: String]
     public var rules: [WindowRule]
@@ -22,7 +23,7 @@ public struct Config: Equatable, Sendable {
     /// Scratchpad name to bundle identifier, from `[scratchpads]`.
     public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), border: BorderOptions = BorderOptions(), autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
@@ -33,6 +34,7 @@ public struct Config: Equatable, Sendable {
         self.smartGaps = smartGaps
         self.cursorWarp = cursorWarp
         self.master = master
+        self.border = border
         self.autostart = autostart
         self.rules = rules
         self.hotkeys = hotkeys
@@ -171,6 +173,16 @@ public struct Config: Equatable, Sendable {
             case "general.cursor_warp":
                 guard let cursorWarp = Bool(value) else { return nil }
                 config.cursorWarp = cursorWarp
+            case "border.enabled":
+                guard let enabled = Bool(value) else { return nil }
+                config.border.enabled = enabled
+            case "border.width":
+                guard let width = nonNegativeDouble(value) else { return nil }
+                config.border.width = width
+            case "border.color":
+                let color = unquoted(value)
+                guard BorderOptions.isValidColor(color) else { return nil }
+                config.border.color = color
             case "master.orientation":
                 guard let orientation = MasterOptions.Orientation(rawValue: unquoted(value)) else { return nil }
                 config.master.orientation = orientation

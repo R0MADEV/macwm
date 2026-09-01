@@ -61,6 +61,14 @@ public enum HyprlandConfig {
             case ("general", "layout"):
                 guard let layout = translateLayout(value) else { return nil }
                 config.layout = layout
+            case ("general", "border_size"):
+                guard let width = Double(value), width >= 0 else { return nil }
+                config.border.width = width
+                config.border.enabled = width > 0
+            case ("general", "col.active_border"):
+                guard let color = translateColor(value) else { return nil }
+                config.border.color = color
+                config.border.enabled = true
             case ("general", "terminal"):
                 guard isValidBundleIdentifier(value) else { return nil }
                 config.terminalBundleIdentifier = value
@@ -221,6 +229,24 @@ public enum HyprlandConfig {
     }
 
     // MARK: - Helpers
+
+    /// First color of a Hyprland color list: rgb(rrggbb), rgba(rrggbbaa) or 0xaarrggbb.
+    private static func translateColor(_ value: String) -> String? {
+        guard let token = value.split(separator: " ").first.map(String.init) else { return nil }
+        if token.hasPrefix("rgba("), token.hasSuffix(")") {
+            let hex = String(token.dropFirst(5).dropLast())
+            return BorderOptions.isValidColor("#\(hex)") && hex.count == 8 ? "#\(hex)" : nil
+        }
+        if token.hasPrefix("rgb("), token.hasSuffix(")") {
+            let hex = String(token.dropFirst(4).dropLast())
+            return BorderOptions.isValidColor("#\(hex)") && hex.count == 6 ? "#\(hex)" : nil
+        }
+        if token.hasPrefix("0x"), token.count == 10 {
+            let hex = String(token.dropFirst(2))
+            return BorderOptions.isValidColor("#\(hex.dropFirst(2))\(hex.prefix(2))") ? "#\(hex.dropFirst(2))\(hex.prefix(2))" : nil
+        }
+        return nil
+    }
 
     private static func translateLayout(_ value: String) -> LayoutKind? {
         switch value {
