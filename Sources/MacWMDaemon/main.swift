@@ -132,6 +132,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
         case .windowVisibilityChanged:
             guard !layoutGuard.isApplying else { return }
             refresh(UInt32(application.processIdentifier), client: client, store: &store)
+            showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
             notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
         case .environmentChanged:
@@ -470,7 +471,7 @@ private func launch(_ commandLine: String) {
 private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: inout WindowStore, workspaces: WorkspaceManager, maximizedFrames: [WindowID: Frame]) {
     layoutGuard.isApplying = true
     defer { layoutGuard.isApplying = false }
-    for window in store.windows {
+    for window in store.windows where !window.isHidden {
         let belongsToWorkspace = workspaces.workspace(for: window.id) == workspace
         let isTiled = window.isTileable && maximizedFrames[window.id] == nil
         guard belongsToWorkspace else {
@@ -484,7 +485,9 @@ private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: ino
 /// `keepsFrame` saves the live frame so floating and maximized windows come back
 /// where the user left them; tiled windows are re-placed by the layout instead.
 private func park(_ window: ManagedWindow, keepsFrame: Bool, client: AXClient, store: inout WindowStore) {
-    guard let storedFrame = window.frame, let screen = client.screenFrame(for: window) else { return }
+    guard let storedFrame = window.frame, let screen = client.screenFrame(for: window), !storedFrame.isParked(in: screen) else { return }
+    // Only windows still on screen need the live frame; asking a busy or
+    // heavy application for it on every switch is what made switching slow.
     let frame = keepsFrame ? client.currentFrame(for: window) ?? storedFrame : storedFrame
     guard !frame.isParked(in: screen) else { return }
     if keepsFrame { parkedFrames.value[window.id] = frame }

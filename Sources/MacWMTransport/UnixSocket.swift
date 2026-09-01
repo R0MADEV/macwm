@@ -173,8 +173,9 @@ public final class UnixSocketBroadcaster: @unchecked Sendable {
 
     public func broadcast(_ message: String) {
         let output = Array((message + "\n").utf8)
+        // Never wait on a client: one that stopped reading is dropped.
         clients.removeAll { client in
-            let written = output.withUnsafeBytes { send(client, $0.baseAddress, output.count, 0) }
+            let written = output.withUnsafeBytes { send(client, $0.baseAddress, output.count, MSG_DONTWAIT) }
             let isDead = written != output.count
             if isDead { close(client) }
             return isDead
