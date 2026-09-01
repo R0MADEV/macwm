@@ -1,10 +1,41 @@
 # macwm
 
-Lightweight, keyboard-first window management for macOS.
+`macwm` is a lightweight, keyboard-first window manager for macOS. It runs as a native Swift daemon over macOS Accessibility APIs, keeping WindowServer as the compositor while adding configurable tiling, workspaces, global hotkeys, a CLI and a native navbar.
+
+It is designed for local use: no account, network service, telemetry, Electron, Node.js or Chromium.
+
+## Installation
+
+The recommended installer is the PKG:
+
+```text
+macwm-0.1.0-arm64.pkg
+```
+
+It installs:
+
+- `macwm.app` with the daemon and CLI;
+- `macwm-bar.app` with the native navbar;
+- CLI commands in `/usr/local/bin`;
+- LaunchAgents for the daemon and navbar;
+- an example configuration at `/usr/local/share/macwm/example-config.toml`;
+- `~/.config/macwm/config.toml` only when the user does not already have one.
+
+The DMG contains both applications and the complete PKG. To install everything from the DMG, open the included PKG instead of dragging only the applications.
+
+After installation:
+
+1. Open `System Settings > Privacy & Security > Accessibility`.
+2. Enable `macwm` or the installed daemon when macOS requests permission.
+3. Log out and back in, or load the LaunchAgents again, if the automatic startup does not begin immediately.
+4. Verify the daemon with `macwm status`.
+5. Edit `~/.config/macwm/config.toml` and apply changes with `macwm reload`.
+
+The daemon and navbar must be signed and notarized before distributing them publicly. Unsigned local builds may trigger Gatekeeper warnings.
 
 ## Status
 
-Planning scaffold. The current package contains:
+The package contains:
 
 - `MacWMCore`: platform-independent window identifiers and BSP frame calculation.
 - `macwm-daemon`: accessory application with an Accessibility permission check.
@@ -57,6 +88,24 @@ The daemon applies the configured layout to the primary display when it starts a
 The daemon must be running before using the CLI.
 
 `macwm-bar` is included in the distribution and runs independently from the daemon. It receives workspace changes through native macOS notifications and does not poll.
+
+## Packaging
+
+Build a visual installer:
+
+```bash
+VERSION=0.1.0 sh scripts/package-dmg.sh
+```
+
+The DMG contains the complete PKG installer as well as the applications. Dragging the apps installs only the applications; double-click the included PKG to install the CLI and LaunchAgents too.
+
+Build a native macOS package installer:
+
+```bash
+VERSION=0.1.0 sh scripts/package-pkg.sh
+```
+
+The generated files are placed in `dist/` and are ignored by Git. Sign the applications and package before public distribution.
 
 The bar position is configured in `~/.config/macwm/config.toml`:
 
