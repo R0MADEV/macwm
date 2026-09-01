@@ -80,11 +80,19 @@ let observerRegistry = AXObserverRegistry { processID, event in
             // Only the focused window is read: enumerating every window of an
             // application that is busy handling a click stalls the daemon.
             guard let window = client.focusedWindow(for: application), isManaged(window) else { return }
+            // Windows that appeared between an app's launch rescan and its
+            // observer attaching, typical of iOS apps, are first seen here.
+            let isNewWindow = !store.windows.contains { $0.id == window.id }
             store.upsert(window)
-            workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
+            workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace, restorePersisted: !isNewWindow)
             store.setFocusedWindow(window.id)
             workspaces.value.recordFocus(window.id)
             print("macwm: focused \(window.appName) - \(window.title)")
+            if isNewWindow {
+                if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
+                applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
+                workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+            }
             notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
             let windowWorkspace = workspaces.value.workspace(for: window.id)
             guard windowWorkspace != workspaces.value.activeWorkspace else { return }

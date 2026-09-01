@@ -218,6 +218,8 @@ final class AXClient {
         let subrole: String = value(for: element, attribute: kAXSubroleAttribute) ?? ""
         let frame = frame(of: element)
         let isMinimized: Bool = value(for: element, attribute: kAXMinimizedAttribute) ?? false
+        var sizeIsSettable = DarwinBoolean(false)
+        AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &sizeIsSettable)
         let isFloating = rules.first { $0.matches(bundleIdentifier: bundleIdentifier, title: title, subrole: subrole) }?.float ?? false
         return ManagedWindow(
             id: WindowID(processID: UInt32(processID), elementHash: Int(truncatingIfNeeded: CFHash(element))),
@@ -229,6 +231,7 @@ final class AXClient {
             bundleIdentifier: bundleIdentifier,
             isFloating: isFloating,
             isHidden: isMinimized || isApplicationHidden,
+            isResizable: sizeIsSettable.boolValue,
             windowNumber: windowNumber(processID: processID, title: title, frame: frame)
         )
     }

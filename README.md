@@ -209,7 +209,7 @@ are persisted in `~/.config/macwm/state.json` using bundle identifier, title,
 process ID and (when available) window number. Closed windows are removed from
 the exported state; older state files remain readable.
 
-Only windows whose Accessibility subrole is `AXStandardWindow` are tiled; dialogs, panels and transient popups float. Only regular applications, the ones with a Dock icon, are managed; menu bar and accessory apps such as `macwm-bar` or border drawers are never touched. Rules apply automatically when a window is discovered. `bundle_id` is required; `title` and `subrole` are optional additional filters. Actions include workspace assignment, floating, centering and explicit dimensions:
+Only windows whose Accessibility subrole is `AXStandardWindow` and whose size can be changed are tiled; dialogs, panels, transient popups and fixed-size windows such as iOS apps or games float. Only regular applications, the ones with a Dock icon, are managed; menu bar and accessory apps such as `macwm-bar` or border drawers are never touched. Rules apply automatically when a window is discovered. `bundle_id` is required; `title` and `subrole` are optional additional filters. Actions include workspace assignment, floating, centering and explicit dimensions:
 
 ```toml
 [[rules]]

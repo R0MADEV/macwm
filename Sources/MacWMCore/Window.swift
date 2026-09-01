@@ -22,6 +22,8 @@ public struct ManagedWindow: Equatable, Sendable {
     public let isFloating: Bool
     /// Minimized, or owned by an application hidden with Cmd+H. Hidden windows leave the layout.
     public let isHidden: Bool
+    /// Windows whose size Accessibility refuses to set, such as iOS apps and games, cannot tile.
+    public let isResizable: Bool
 
     public init(
         id: WindowID,
@@ -33,6 +35,7 @@ public struct ManagedWindow: Equatable, Sendable {
         bundleIdentifier: String = "",
         isFloating: Bool = false,
         isHidden: Bool = false,
+        isResizable: Bool = true,
         windowNumber: UInt32? = nil
     ) {
         self.id = id
@@ -45,13 +48,14 @@ public struct ManagedWindow: Equatable, Sendable {
         self.windowNumber = windowNumber
         self.isFloating = isFloating
         self.isHidden = isHidden
+        self.isResizable = isResizable
     }
 
     /// Only standard windows tile. Dialogs, panels and transient popups such as
     /// Chrome's omnibox dropdown report other subroles and must float.
     public var isTileable: Bool {
         let isStandardWindow = subrole == "AXStandardWindow"
-        return isStandardWindow && !isFloating && !isHidden
+        return isStandardWindow && isResizable && !isFloating && !isHidden
     }
 
     public var persistentKey: WindowKey {
@@ -123,6 +127,7 @@ public struct WindowStore: Sendable {
             bundleIdentifier: window.bundleIdentifier,
             isFloating: window.isFloating,
             isHidden: window.isHidden,
+            isResizable: window.isResizable,
             windowNumber: window.windowNumber
         )
     }
@@ -139,6 +144,7 @@ public struct WindowStore: Sendable {
             bundleIdentifier: window.bundleIdentifier,
             isFloating: floating,
             isHidden: window.isHidden,
+            isResizable: window.isResizable,
             windowNumber: window.windowNumber
         )
     }
@@ -189,6 +195,7 @@ public struct WindowStore: Sendable {
             bundleIdentifier: window.bundleIdentifier,
             isFloating: !window.isFloating,
             isHidden: window.isHidden,
+            isResizable: window.isResizable,
             windowNumber: window.windowNumber
         )
         values[focusedID] = updated
@@ -207,6 +214,7 @@ public struct WindowStore: Sendable {
             bundleIdentifier: window.bundleIdentifier,
             isFloating: existing.isFloating,
             isHidden: window.isHidden,
+            isResizable: window.isResizable,
             windowNumber: window.windowNumber
         )
     }

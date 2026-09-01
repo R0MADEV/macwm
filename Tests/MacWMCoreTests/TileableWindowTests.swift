@@ -37,3 +37,10 @@ import Testing
     #expect(store.windows.first?.isHidden == true)
     #expect(store.windows.first?.isFloating == true)
 }
+
+@Test func nonResizableWindowsFloat() {
+    let fixed = ManagedWindow(id: WindowID(1), processID: 1, title: "Game", isResizable: false)
+
+    #expect(!fixed.isTileable)
+    #expect(ManagedWindow(id: WindowID(2), processID: 1, title: "Editor").isTileable)
+}

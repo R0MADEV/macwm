@@ -112,7 +112,11 @@ final class AXObserverRegistry: @unchecked Sendable {
 
     private func workspaceChanged(_ note: Notification) {
         if let application = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
-            if note.name == NSWorkspace.didLaunchApplicationNotification { connect(application) }
+            if note.name == NSWorkspace.didLaunchApplicationNotification {
+                connect(application)
+                // Many apps show their first window well after launching; look again.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.scheduleRescan() }
+            }
             if note.name == NSWorkspace.didTerminateApplicationNotification { observers.removeValue(forKey: application.processIdentifier) }
         }
         scheduleRescan()
