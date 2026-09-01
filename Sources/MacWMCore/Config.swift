@@ -7,6 +7,7 @@ public struct Config: Equatable, Sendable {
     public var barPosition: BarPosition
     public var terminalBundleIdentifier: String
     public var autoTile: Bool
+    public var focusFollowsMouse: Bool
     public var rules: [WindowRule]
     public var hotkeys: [String: String]
     /// Mode name to binding text to command text, from `[binds]` and `[binds.<mode>]`.
@@ -14,13 +15,14 @@ public struct Config: Equatable, Sendable {
     /// Scratchpad name to bundle identifier, from `[scratchpads]`.
     public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
         self.outerGap = outerGap
         self.innerGap = innerGap
         self.autoTile = autoTile
+        self.focusFollowsMouse = focusFollowsMouse
         self.rules = rules
         self.hotkeys = hotkeys
         self.binds = binds
@@ -140,7 +142,8 @@ public struct Config: Equatable, Sendable {
                 guard let autoTile = Bool(value) else { return nil }
                 config.autoTile = autoTile
             case "general.focus_follows_mouse":
-                guard Bool(value) != nil else { return nil }
+                guard let focusFollowsMouse = Bool(value) else { return nil }
+                config.focusFollowsMouse = focusFollowsMouse
             case "keys.focus_left", "keys.focus_down", "keys.focus_up", "keys.focus_right",
                  "keys.move_left", "keys.move_down", "keys.move_up", "keys.move_right",
                  "keys.toggle_float", "keys.maximize", "keys.resize", "keys.terminal_toggle":

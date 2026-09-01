@@ -233,6 +233,15 @@ The toggle launches the terminal when it is not running, minimizes its visible w
 
 Floating windows can be handled with the mouse, like `bindm` in Hyprland: hold `Option` and drag with the left button to move a floating window, or with the right button to resize it from its bottom-right corner. Tiled windows are not affected, so `Option+click` keeps working in applications when the window under the cursor is tiled.
 
+### Focus follows mouse
+
+```toml
+[general]
+focus_follows_mouse = true
+```
+
+When enabled, resting the pointer over a different window of the active workspace focuses and raises it, without clicking. It is off by default and can be toggled with `macwm reload`.
+
 ### Scratchpads
 
 Any application can be toggled like the drop-down terminal. Give it a name under `[scratchpads]` and bind `scratchpad <name>`:

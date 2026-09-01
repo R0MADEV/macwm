@@ -144,6 +144,15 @@ let mouse = MouseManager(client: client, targets: mouseTargets, onDragEnd: { id,
 })
 if mouse == nil { fputs("macwm: unable to register the mouse tap; Option+drag on floating windows is disabled.\n", stderr) }
 
+let focusFollowsMouse = FocusFollowsMouse(client: client, focus: { id in
+    let isFocusable = store.windows.contains { $0.id == id && !$0.isHidden && workspaces.value.workspace(for: $0.id) == workspaces.value.activeWorkspace }
+    guard isFocusable, store.focusedWindow?.id != id, let window = store.windows.first(where: { $0.id == id }),
+          let element = client.element(for: window), client.focus(element) else { return }
+    store.setFocusedWindow(id)
+    workspaces.value.recordFocus(id)
+})
+focusFollowsMouse.setEnabled(runtimeConfiguration.value.focusFollowsMouse)
+
 guard let server = UnixSocketServer(path: socketPath, handler: { command in
     execute(command, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: runtimeConfiguration, workspaces: workspaces)
 }) else {
@@ -168,6 +177,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         guard let updatedConfiguration = ConfigLoader.loadValidated() else { return "error: invalid configuration" }
         configuration.value = updatedConfiguration
         keybinds.replace(updatedConfiguration.keybindEngine())
+        focusFollowsMouse.setEnabled(updatedConfiguration.focusFollowsMouse)
         client.updateRules(configuration.value.rules)
         for window in managedWindows(client) {
             store.upsert(window)

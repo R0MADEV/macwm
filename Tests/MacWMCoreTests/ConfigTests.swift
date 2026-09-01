@@ -82,3 +82,9 @@ func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
     #expect(Config.parse("[scratchpads]\nchat = \"\"") == nil)
     #expect(Config.parse("[scratchpads]\nchat = \"not valid\"") == nil)
 }
+
+@Test func parsesFocusFollowsMouse() {
+    #expect(Config().focusFollowsMouse == false)
+    #expect(Config.parse("[general]\nfocus_follows_mouse = true")?.focusFollowsMouse == true)
+    #expect(Config.parse("[general]\nfocus_follows_mouse = maybe") == nil)
+}
