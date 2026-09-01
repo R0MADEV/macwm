@@ -5,7 +5,7 @@ import MacWMCore
 /// application when needed, minimizes its window when visible and restores it
 /// otherwise. Scratchpad applications are never tiled, parked or hidden by
 /// workspace switches.
-final class ScratchpadController {
+final class ScratchpadController: @unchecked Sendable {
     private let client: AXClient
     private let bundleIdentifier: String
     private let fillsScreen: Bool
@@ -22,8 +22,10 @@ final class ScratchpadController {
             return
         }
         guard let application = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first else {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] application, error in
-                guard let self, error == nil, let application else { return }
+            // Controllers are created per toggle, so the completion must keep
+            // this instance alive until the application has launched.
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { application, error in
+                guard error == nil, let application else { return }
                 DispatchQueue.main.async { self.restore(application) }
             }
             return
