@@ -58,3 +58,9 @@ import Testing
     #expect(Command.parse(["center"]) == .center)
     #expect(Command.center.wireValue == "center")
 }
+
+@Test func parsesMoveToWorkspace() {
+    #expect(Command.parse(["move-to-workspace", "4"]) == .moveToWorkspace(4))
+    #expect(Command.moveToWorkspace(4).wireValue == "move-to-workspace 4")
+    #expect(Command.parse(["move-to-workspace"]) == nil)
+}

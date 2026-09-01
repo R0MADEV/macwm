@@ -14,6 +14,8 @@ public enum Command: Equatable, Sendable {
     /// Center the focused floating window on its screen.
     case center
     case sendToWorkspace(Int)
+    /// Send the focused window to a workspace and follow it there.
+    case moveToWorkspace(Int)
     case focus(Direction)
     case move(Direction)
     case resize(ResizeOperation)
@@ -59,6 +61,7 @@ public enum Command: Equatable, Sendable {
             return Int(value).map(Command.workspace)
         case "center": return arguments.count == 1 ? .center : nil
         case "send-to-workspace": return arguments.count == 2 ? value.flatMap(Int.init).map(Command.sendToWorkspace) : nil
+        case "move-to-workspace": return arguments.count == 2 ? value.flatMap(Int.init).map(Command.moveToWorkspace) : nil
         case "focus":
             guard arguments.count == 2, let value else { return nil }
             if value == "next" { return .cycleFocus(forward: true) }
@@ -97,6 +100,7 @@ public enum Command: Equatable, Sendable {
         case .previousWorkspace: return "workspace previous"
         case .center: return "center"
         case let .sendToWorkspace(workspace): return "send-to-workspace \(workspace)"
+        case let .moveToWorkspace(workspace): return "move-to-workspace \(workspace)"
         case let .focus(direction): return "focus \(direction.rawValue)"
         case let .move(direction): return "move \(direction.rawValue)"
         case let .resize(operation): return "resize \(operation.rawValue)"

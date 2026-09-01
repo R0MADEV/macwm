@@ -257,6 +257,7 @@ struct GeneralTab: View {
             Toggle("Smart gaps: no gaps with a single window", isOn: $model.config.smartGaps)
             Toggle("Tile new windows automatically", isOn: $model.config.autoTile)
             Toggle("Focus follows mouse", isOn: $model.config.focusFollowsMouse)
+            Toggle("Move the pointer to windows focused from the keyboard", isOn: $model.config.cursorWarp)
             Picker("Bar position", selection: $model.config.barPosition) {
                 Text("Top").tag(BarPosition.top)
                 Text("Bottom").tag(BarPosition.bottom)

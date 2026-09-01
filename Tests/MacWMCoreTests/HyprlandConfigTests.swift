@@ -73,7 +73,7 @@ windowrulev2 = size 800 600, class:^(com\\.microsoft\\.VSCode)$, title:^(Welcome
     #expect(binds["alt+h"] == "focus left")
     #expect(binds["alt+shift+l"] == "move right")
     #expect(binds["alt+1"] == "workspace 1")
-    #expect(binds["alt+shift+1"] == "send-to-workspace 1")
+    #expect(binds["alt+shift+1"] == "move-to-workspace 1")
     #expect(binds["alt+q"] == "close")
     #expect(binds["alt+f"] == "toggle-float")
     #expect(binds["alt+return"] == "exec open -a iTerm")

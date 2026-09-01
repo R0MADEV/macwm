@@ -272,12 +272,20 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         workspaces.value.assign(focusedWindow, to: workspace)
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
         return switchWorkspace(workspaces.value.activeWorkspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: configuration.value)
+    case let .moveToWorkspace(workspace):
+        guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
+        guard workspaces.value.isValid(workspace) else { return "error: invalid workspace" }
+        workspaces.value.assign(focusedWindow, to: workspace)
+        workspaces.value.recordFocus(focusedWindow.id)
+        workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+        return switchWorkspace(workspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: configuration.value)
     case let .focus(direction):
         let candidateIDs = activeWorkspaceWindowIDs(store: store, workspaces: workspaces.value, tileableOnly: false)
         guard let target = store.window(in: direction, among: candidateIDs), let element = client.element(for: target) else { return "error: no window in direction" }
         guard client.focus(element) else { return "error: unable to focus window" }
         store.setFocusedWindow(target.id)
         workspaces.value.recordFocus(target.id)
+        warpCursor(to: target, enabled: configuration.value.cursorWarp)
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
         print("macwm: focused \(target.appName) - \(target.title)")
         return "ok"
@@ -347,6 +355,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         guard client.focus(element) else { return "error: unable to focus window" }
         store.setFocusedWindow(target.id)
         workspaces.value.recordFocus(target.id)
+        warpCursor(to: target, enabled: configuration.value.cursorWarp)
         return "ok"
     case .toggleSplit:
         guard let focusedWindow = store.focusedWindow, focusedWindow.isTileable else { return "error: no tiled window focused" }
@@ -422,7 +431,7 @@ private func switchWorkspace(
     let parked = DispatchTime.now().uptimeNanoseconds
     applyTiling(client: client, store: &store, config: config, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
     let tiled = DispatchTime.now().uptimeNanoseconds
-    focusLastWindow(in: workspace, client: client, store: &store, workspaces: workspaces)
+    focusLastWindow(in: workspace, client: client, store: &store, workspaces: workspaces, warpCursor: config.cursorWarp)
     let focused = DispatchTime.now().uptimeNanoseconds
     reportSlowSwitch(to: workspace, park: parked &- started, tile: tiled &- parked, focus: focused &- tiled)
     workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
@@ -431,13 +440,23 @@ private func switchWorkspace(
 
 /// Returns keyboard focus to the window last used in the workspace, or to the
 /// first visible one, so the user can type right after switching.
-private func focusLastWindow(in workspace: Int, client: AXClient, store: inout WindowStore, workspaces: DaemonWorkspaces) {
+private func focusLastWindow(in workspace: Int, client: AXClient, store: inout WindowStore, workspaces: DaemonWorkspaces, warpCursor shouldWarp: Bool) {
     let candidates = store.windows.filter { !$0.isHidden && workspaces.value.workspace(for: $0.id) == workspace }
     let remembered = workspaces.value.lastFocusedWindow(in: workspace).flatMap { id in candidates.first { $0.id == id } }
     guard let target = remembered ?? candidates.first(where: \.isTileable) ?? candidates.first,
           let element = client.element(for: target), client.focus(element) else { return }
     store.setFocusedWindow(target.id)
     workspaces.value.recordFocus(target.id)
+    warpCursor(to: store.windows.first { $0.id == target.id } ?? target, enabled: shouldWarp)
+}
+
+/// Keyboard focus moves the pointer to the window's center so mouse work
+/// continues where the eyes are, like Hyprland unless cursor:no_warps is set.
+private func warpCursor(to window: ManagedWindow, enabled: Bool) {
+    guard enabled, let frame = window.frame else { return }
+    let center = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+    CGWarpMouseCursorPosition(center)
+    CGAssociateMouseAndMouseCursorPosition(1)
 }
 
 /// Diagnostics: phases of a workspace switch that took longer than 40 ms in total.

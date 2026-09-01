@@ -90,6 +90,7 @@ public extension Config {
         lines.append("auto_tile = \(autoTile)")
         lines.append("focus_follows_mouse = \(focusFollowsMouse)")
         lines.append("smart_gaps = \(smartGaps)")
+        lines.append("cursor_warp = \(cursorWarp)")
         lines.append(contentsOf: ["", "[display]", "outer_gap = \(number(outerGap))", "inner_gap = \(number(innerGap))"])
         lines.append(contentsOf: ["", "[bar]", "position = \"\(barPosition.rawValue)\""])
         lines.append(contentsOf: ["", "[terminal]", "bundle_id = \"\(terminalBundleIdentifier)\""])

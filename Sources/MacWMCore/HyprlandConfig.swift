@@ -66,6 +66,8 @@ public enum HyprlandConfig {
                 config.terminalBundleIdentifier = value
             case ("dwindle", "no_gaps_when_only"):
                 config.smartGaps = isTruthy(value)
+            case ("cursor", "no_warps"):
+                config.cursorWarp = !isTruthy(value)
             case ("input", "follow_mouse"):
                 config.focusFollowsMouse = isTruthy(value)
             default:
@@ -118,7 +120,8 @@ public enum HyprlandConfig {
         case "movefocus": return directions[argument].map { "focus \($0)" }
         case "movewindow", "swapwindow": return directions[argument].map { "move \($0)" }
         case "workspace": return Int(argument) != nil || argument == "previous" ? "workspace \(argument)" : nil
-        case "movetoworkspace", "movetoworkspacesilent": return Int(argument).map { "send-to-workspace \($0)" }
+        case "movetoworkspace": return Int(argument).map { "move-to-workspace \($0)" }
+        case "movetoworkspacesilent": return Int(argument).map { "send-to-workspace \($0)" }
         case "killactive": return "close"
         case "togglefloating": return "toggle-float"
         case "fullscreen": return "maximize"

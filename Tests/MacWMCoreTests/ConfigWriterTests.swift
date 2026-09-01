@@ -9,6 +9,7 @@ private func richConfig() -> Config {
     ]
     config.scratchpads = ["chat": "net.whatsapp.WhatsApp"]
     config.hotkeys["focus_left"] = "ctrl+h"
+    config.cursorWarp = false
     config.binds = ["default": ["alt+q": "close"], "resize": ["h": "resize shrink", "escape": "mode default"]]
     return config
 }

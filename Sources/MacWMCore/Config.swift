@@ -10,6 +10,8 @@ public struct Config: Equatable, Sendable {
     public var focusFollowsMouse: Bool
     /// No gaps at all when a workspace shows a single tiled window.
     public var smartGaps: Bool
+    /// Move the pointer to windows focused from the keyboard, like Hyprland.
+    public var cursorWarp: Bool
     /// Name to command line, run through the login shell once when the daemon starts.
     public var autostart: [String: String]
     public var rules: [WindowRule]
@@ -19,7 +21,7 @@ public struct Config: Equatable, Sendable {
     /// Scratchpad name to bundle identifier, from `[scratchpads]`.
     public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
@@ -28,6 +30,7 @@ public struct Config: Equatable, Sendable {
         self.autoTile = autoTile
         self.focusFollowsMouse = focusFollowsMouse
         self.smartGaps = smartGaps
+        self.cursorWarp = cursorWarp
         self.autostart = autostart
         self.rules = rules
         self.hotkeys = hotkeys
@@ -163,6 +166,9 @@ public struct Config: Equatable, Sendable {
             case "general.auto_tile":
                 guard let autoTile = Bool(value) else { return nil }
                 config.autoTile = autoTile
+            case "general.cursor_warp":
+                guard let cursorWarp = Bool(value) else { return nil }
+                config.cursorWarp = cursorWarp
             case "general.smart_gaps":
                 guard let smartGaps = Bool(value) else { return nil }
                 config.smartGaps = smartGaps

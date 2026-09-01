@@ -104,3 +104,9 @@ func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
     #expect(config?.autostart == ["bar": "sketchybar", "borders": "borders width=4"])
     #expect(Config.parse("[autostart]\nbar = \"\"") == nil)
 }
+
+@Test func parsesCursorWarp() {
+    #expect(Config().cursorWarp == true)
+    #expect(Config.parse("[general]\ncursor_warp = false")?.cursorWarp == false)
+    #expect(HyprlandConfig.parse("cursor {\n no_warps = true\n}")?.cursorWarp == false)
+}

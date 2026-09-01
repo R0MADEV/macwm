@@ -74,7 +74,8 @@ All commands go through the `macwm` CLI and can be bound to any key under `[bind
 | `macwm layout bsp\|stack\|monocle\|master` | Set the layout of the active workspace | none |
 | `macwm workspace N` | Switch to workspace `N` (1 to 9) and focus the window you last used there | `Option+N` |
 | `macwm workspace previous` | Back to the workspace you came from, Hyprland's back-and-forth | none |
-| `macwm send-to-workspace N` | Send the focused window to workspace `N` | `Option+Shift+N` |
+| `macwm send-to-workspace N` | Send the focused window to workspace `N` and stay, Hyprland's `movetoworkspacesilent` | `Option+Shift+N` |
+| `macwm move-to-workspace N` | Send the focused window to workspace `N` and follow it, Hyprland's `movetoworkspace` | none |
 | `macwm focus left\|down\|up\|right` | Focus the nearest visible window in that direction | `Option+H/J/K/L` |
 | `macwm focus next\|prev` | Cycle focus through the visible windows of the workspace, wrapping around | none |
 | `macwm move left\|down\|up\|right` | Tiled: swap the focused window with its neighbor in that direction; floating: nudge it 40 points | `Option+Shift+H/J/K/L` |
@@ -333,6 +334,15 @@ bar = "sketchybar"
 ```
 
 `smart_gaps` removes every gap when a workspace shows a single tiled window, like `no_gaps_when_only` in Hyprland. `[autostart]` is the equivalent of `exec-once`: each command line runs once through your login shell when the daemon starts, in the order of the names.
+
+### Cursor warp
+
+```toml
+[general]
+cursor_warp = true
+```
+
+On by default, as in Hyprland: focusing a window from the keyboard, with `focus`, `focus next` or a workspace switch, moves the pointer to its center. Set it to `false`, or `cursor { no_warps = true }` in the Hyprland dialect, to leave the pointer alone.
 
 ### Focus follows mouse
 
