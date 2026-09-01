@@ -38,6 +38,7 @@ if let focusedWindow = client.focusedWindow(), isManaged(focusedWindow) {
     if persistedState.floating?[focusedWindow.persistentKey] == true { store.setFloating(true, for: focusedWindow.id) }
     workspaces.value.register(focusedWindow, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
     store.setFocusedWindow(focusedWindow.id)
+    workspaces.value.recordFocus(focusedWindow.id)
 }
 
 for window in store.windows {
@@ -76,6 +77,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
             store.upsert(window)
             workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
             store.setFocusedWindow(window.id)
+            workspaces.value.recordFocus(window.id)
             print("macwm: focused \(window.appName) - \(window.title)")
             let windowWorkspace = workspaces.value.workspace(for: window.id)
             guard windowWorkspace != workspaces.value.activeWorkspace else { return }
@@ -168,6 +170,7 @@ private func handle(_ action: HotkeyManager.Action, client: AXClient, store: ino
 
 private func execute(_ command: Command, client: AXClient, store: inout WindowStore, maximizedFrames: inout [WindowID: Frame], configuration: DaemonConfiguration, workspaces: DaemonWorkspaces) -> String {
     syncFocusedWindow(client: client, store: &store)
+    if let focusedID = store.focusedWindow?.id { workspaces.value.recordFocus(focusedID) }
 
     switch command {
     case .status:
@@ -210,6 +213,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         guard let target = store.window(in: direction, among: candidateIDs), let element = client.element(for: target) else { return "error: no window in direction" }
         guard client.focus(element) else { return "error: unable to focus window" }
         store.setFocusedWindow(target.id)
+        workspaces.value.recordFocus(target.id)
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
         print("macwm: focused \(target.appName) - \(target.title)")
         return "ok"
@@ -300,8 +304,20 @@ private func switchWorkspace(
 
     showWorkspaceWindows(workspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
     applyTiling(client: client, store: &store, config: config, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+    focusLastWindow(in: workspace, client: client, store: &store, workspaces: workspaces)
     workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
     return "ok"
+}
+
+/// Returns keyboard focus to the window last used in the workspace, or to the
+/// first visible one, so the user can type right after switching.
+private func focusLastWindow(in workspace: Int, client: AXClient, store: inout WindowStore, workspaces: DaemonWorkspaces) {
+    let candidates = store.windows.filter { !$0.isHidden && workspaces.value.workspace(for: $0.id) == workspace }
+    let remembered = workspaces.value.lastFocusedWindow(in: workspace).flatMap { id in candidates.first { $0.id == id } }
+    guard let target = remembered ?? candidates.first(where: \.isTileable) ?? candidates.first,
+          let element = client.element(for: target), client.focus(element) else { return }
+    store.setFocusedWindow(target.id)
+    workspaces.value.recordFocus(target.id)
 }
 
 private func activeWorkspaceWindowIDs(store: WindowStore, workspaces: WorkspaceManager, tileableOnly: Bool) -> Set<WindowID> {

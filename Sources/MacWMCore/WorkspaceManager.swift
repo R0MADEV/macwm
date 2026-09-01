@@ -7,6 +7,7 @@ public struct WorkspaceManager: Sendable {
     private var windowKeys: [WindowID: WindowKey]
     private var trees: [Int: WindowTree]
     private var layouts: [Int: LayoutKind]
+    private var lastFocused: [Int: WindowID] = [:]
 
     public init(count: Int = 9, assignments: [WindowKey: Int] = [:], activeWorkspace: Int = 1, trees: [Int: WindowTree] = [:], layouts: [Int: LayoutKind] = [:]) {
         let normalizedCount = max(1, count)
@@ -131,6 +132,18 @@ public struct WorkspaceManager: Sendable {
         guard let key = windowKeys.removeValue(forKey: windowID), keyOwners[key] == windowID else { return }
         keyOwners.removeValue(forKey: key)
         keyAssignments.removeValue(forKey: key)
+    }
+
+    /// Remembers the window the user last focused in its workspace so switching
+    /// back can return keyboard focus there.
+    public mutating func recordFocus(_ window: WindowID) {
+        guard let workspace = assignments[window] else { return }
+        lastFocused[workspace] = window
+    }
+
+    public func lastFocusedWindow(in workspace: Int) -> WindowID? {
+        guard let window = lastFocused[workspace], assignments[window] == workspace else { return nil }
+        return window
     }
 
     public mutating func activate(_ workspace: Int) {

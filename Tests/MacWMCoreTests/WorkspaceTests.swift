@@ -77,3 +77,31 @@ import Testing
     manager.register(ruled, rules: [WindowRule(bundleIdentifier: "com.apple.mail", float: false, workspace: 2)], defaultWorkspace: 1, restorePersisted: false)
     #expect(manager.workspace(for: ruled.id) == 2)
 }
+
+@Test func remembersLastFocusedWindowPerWorkspace() {
+    var manager = WorkspaceManager(count: 3)
+    manager.assign(WindowID(1), to: 1)
+    manager.assign(WindowID(2), to: 1)
+    manager.assign(WindowID(3), to: 2)
+
+    manager.recordFocus(WindowID(1))
+    manager.recordFocus(WindowID(3))
+    manager.recordFocus(WindowID(2))
+
+    #expect(manager.lastFocusedWindow(in: 1) == WindowID(2))
+    #expect(manager.lastFocusedWindow(in: 2) == WindowID(3))
+    #expect(manager.lastFocusedWindow(in: 3) == nil)
+}
+
+@Test func forgetsLastFocusedWindowWhenItMovesOrCloses() {
+    var manager = WorkspaceManager(count: 3)
+    manager.assign(WindowID(1), to: 1)
+    manager.recordFocus(WindowID(1))
+
+    manager.assign(WindowID(1), to: 2)
+    #expect(manager.lastFocusedWindow(in: 1) == nil)
+
+    manager.recordFocus(WindowID(1))
+    manager.remove(WindowID(1))
+    #expect(manager.lastFocusedWindow(in: 2) == nil)
+}
