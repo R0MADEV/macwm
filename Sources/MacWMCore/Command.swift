@@ -11,6 +11,8 @@ public enum Command: Equatable, Sendable {
     case toggleFloat
     case toggleTerminal
     case close
+    /// Toggle a scratchpad by its configured name or bundle identifier.
+    case scratchpad(String)
     /// Focus the next or previous window of the active workspace.
     case cycleFocus(forward: Bool)
     /// Flip the split direction of the focused window's parent node in the BSP tree.
@@ -44,6 +46,9 @@ public enum Command: Equatable, Sendable {
             if value == "prev" || value == "previous" { return .cycleFocus(forward: false) }
             return Direction(rawValue: value).map(Command.focus)
         case "close": return arguments.count == 1 ? .close : nil
+        case "scratchpad":
+            guard arguments.count == 2, let value, !value.isEmpty else { return nil }
+            return .scratchpad(value)
         case "toggle-split": return arguments.count == 1 ? .toggleSplit : nil
         case "exec":
             let commandLine = arguments.dropFirst().joined(separator: " ")
@@ -75,6 +80,7 @@ public enum Command: Equatable, Sendable {
         case .toggleTerminal: return "toggle-terminal"
         case let .mode(name): return "mode \(name)"
         case .close: return "close"
+        case let .scratchpad(name): return "scratchpad \(name)"
         case let .cycleFocus(forward): return forward ? "focus next" : "focus prev"
         case .toggleSplit: return "toggle-split"
         case let .exec(commandLine): return "exec \(commandLine)"

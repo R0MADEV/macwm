@@ -30,3 +30,9 @@ import Testing
     #expect(Command.parse("exec open -a Safari") == .exec("open -a Safari"))
     #expect(Command.parse(["exec"]) == nil)
 }
+
+@Test func parsesScratchpadCommand() {
+    #expect(Command.parse(["scratchpad", "chat"]) == .scratchpad("chat"))
+    #expect(Command.scratchpad("chat").wireValue == "scratchpad chat")
+    #expect(Command.parse(["scratchpad"]) == nil)
+}

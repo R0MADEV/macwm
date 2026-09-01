@@ -29,6 +29,11 @@ toggle_float = "alt+f"
 maximize = "alt+m"
 terminal_toggle = "grave"
 
+# Applications toggled like the terminal, by name: bind "scratchpad chat".
+# They are never tiled or hidden by workspace switches.
+[scratchpads]
+# chat = "net.whatsapp.WhatsApp"
+
 # Free-form bindings: any key to any CLI command. These override [keys].
 [binds]
 "alt+r" = "mode resize"

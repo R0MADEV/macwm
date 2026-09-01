@@ -88,6 +88,7 @@ macwm focus prev
 macwm toggle-split
 macwm exec open -a Safari
 macwm mode resize
+macwm scratchpad chat
 ```
 
 `close` presses the focused window's close button. `focus next` and `focus prev` cycle through the visible windows of the active workspace. `toggle-split` flips the split direction of the focused window's parent node in the BSP tree. `exec` runs the rest of the line through your login shell, so anything that works in a terminal works here. None of these have default hotkeys; bind them under `[binds]`, for example:
@@ -224,6 +225,22 @@ Alacritty     org.alacritty
 `terminal_toggle` defaults to `grave` (the backtick key) and is registered globally without modifiers. Change it under `[keys]`, for example `terminal_toggle = "ctrl+grave"`, or run `macwm toggle-terminal`.
 
 The toggle launches the terminal when it is not running, minimizes its visible window, and restores, activates and resizes a minimized or hidden window to cover the whole current screen. The terminal is excluded from workspace assignments, hiding and tiling, so macwm never moves or hides it during workspace changes. macOS provides no public API to keep another application's window always on top or visible on every Space; this limitation cannot be removed without private APIs.
+
+### Scratchpads
+
+Any application can be toggled like the drop-down terminal. Give it a name under `[scratchpads]` and bind `scratchpad <name>`:
+
+```toml
+[scratchpads]
+chat = "net.whatsapp.WhatsApp"
+notes = "com.apple.Notes"
+
+[binds]
+"alt+w" = "scratchpad chat"
+"alt+n" = "scratchpad notes"
+```
+
+`scratchpad` launches the application when it is not running, minimizes its window when visible and restores and focuses it otherwise, keeping the window's own size. Scratchpad applications, like the terminal, are never tiled, parked or hidden by workspace switches. `scratchpad` also accepts a bundle identifier directly.
 
 ### Navbar
 

@@ -22,7 +22,6 @@ let latencyActivity = ProcessInfo.processInfo.beginActivity(
 let runtimeConfiguration = DaemonConfiguration(ConfigLoader.load())
 let keybinds = DaemonKeybinds(runtimeConfiguration.value.keybindEngine())
 let client = AXClient(rules: runtimeConfiguration.value.rules)
-let terminalController = TerminalController(client: client, bundleIdentifier: runtimeConfiguration.value.terminalBundleIdentifier)
 let workspacePersistence = WorkspacePersistence()
 let persistedState = workspacePersistence.loadState()
 let workspaces = DaemonWorkspaces(assignments: persistedState.assignments, activeWorkspace: persistedState.activeWorkspace, trees: persistedState.trees ?? [:], layouts: persistedState.layouts ?? [:])
@@ -162,7 +161,6 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     case .reload:
         guard let updatedConfiguration = ConfigLoader.loadValidated() else { return "error: invalid configuration" }
         configuration.value = updatedConfiguration
-        terminalController.update(bundleIdentifier: updatedConfiguration.terminalBundleIdentifier)
         keybinds.replace(updatedConfiguration.keybindEngine())
         client.updateRules(configuration.value.rules)
         for window in managedWindows(client) {
@@ -235,7 +233,11 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, floating: store.persistedFloating)
         return "ok"
     case .toggleTerminal:
-        terminalController.toggle()
+        ScratchpadController(client: client, bundleIdentifier: configuration.value.terminalBundleIdentifier, fillsScreen: true).toggle()
+        return "ok"
+    case let .scratchpad(name):
+        let bundleIdentifier = configuration.value.scratchpads[name] ?? name
+        ScratchpadController(client: client, bundleIdentifier: bundleIdentifier, fillsScreen: false).toggle()
         return "ok"
     case .close:
         guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
@@ -265,10 +267,10 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     }
 }
 
-/// The configured terminal is never tiled, hidden or parked; accessory apps
-/// such as the bar are already filtered out by AXClient.
+/// The terminal and the scratchpads are never tiled, hidden or parked;
+/// accessory apps such as the bar are already filtered out by AXClient.
 private func isManaged(_ window: ManagedWindow) -> Bool {
-    window.bundleIdentifier != terminalController.bundleIdentifier
+    !runtimeConfiguration.value.unmanagedBundleIdentifiers.contains(window.bundleIdentifier)
 }
 
 private func managedWindows(_ client: AXClient) -> [ManagedWindow] {

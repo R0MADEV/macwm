@@ -5,7 +5,7 @@ import MacWMTransport
 let arguments = Array(CommandLine.arguments.dropFirst())
 
 guard let command = arguments.first else {
-    print("Usage: macwm <status|reload|layout|focus|move|resize|maximize|toggle-float|toggle-split|close|exec|mode|toggle-terminal|workspace|send-to-workspace> [value]")
+    print("Usage: macwm <status|reload|layout|focus|move|resize|maximize|toggle-float|toggle-split|close|exec|mode|toggle-terminal|scratchpad|workspace|send-to-workspace> [value]")
     exit(EXIT_FAILURE)
 }
 

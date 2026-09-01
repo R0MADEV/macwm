@@ -1,21 +1,24 @@
 import AppKit
+import MacWMCore
 
-final class TerminalController: @unchecked Sendable {
+/// Toggles one application's window like a drop-down terminal: launches the
+/// application when needed, minimizes its window when visible and restores it
+/// otherwise. Scratchpad applications are never tiled, parked or hidden by
+/// workspace switches.
+final class ScratchpadController {
     private let client: AXClient
-    private(set) var bundleIdentifier: String
+    private let bundleIdentifier: String
+    private let fillsScreen: Bool
 
-    init(client: AXClient, bundleIdentifier: String) {
+    init(client: AXClient, bundleIdentifier: String, fillsScreen: Bool) {
         self.client = client
         self.bundleIdentifier = bundleIdentifier
-    }
-
-    func update(bundleIdentifier: String) {
-        self.bundleIdentifier = bundleIdentifier
+        self.fillsScreen = fillsScreen
     }
 
     func toggle() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
-            fputs("macwm: terminal application is not installed (\(bundleIdentifier))\n", stderr)
+            fputs("macwm: scratchpad application is not installed (\(bundleIdentifier))\n", stderr)
             return
         }
         guard let application = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first else {
@@ -46,12 +49,12 @@ final class TerminalController: @unchecked Sendable {
         guard client.setHidden(false, for: window) else { return }
         application.activate(options: [.activateIgnoringOtherApps])
 
-        // Read the restored window again so screenFrame uses its current
-        // screen instead of the pre-restore/minimized snapshot.
-        guard let restoredWindow = client.windows(for: application).first,
-              let frame = client.screenFrame(for: restoredWindow),
-              client.setFrame(frame, for: restoredWindow),
-              let element = client.element(for: restoredWindow) else { return }
+        // Read the restored window again so the frame uses its current screen
+        // instead of the pre-restore snapshot.
+        guard let restoredWindow = client.windows(for: application).first, let element = client.element(for: restoredWindow) else { return }
+        if fillsScreen, let frame = client.screenFrame(for: restoredWindow) {
+            _ = client.setFrame(frame, for: restoredWindow)
+        }
         _ = client.focus(element)
     }
 }

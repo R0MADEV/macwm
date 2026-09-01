@@ -11,8 +11,10 @@ public struct Config: Equatable, Sendable {
     public var hotkeys: [String: String]
     /// Mode name to binding text to command text, from `[binds]` and `[binds.<mode>]`.
     public var binds: [String: [String: String]]
+    /// Scratchpad name to bundle identifier, from `[scratchpads]`.
+    public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
@@ -22,6 +24,7 @@ public struct Config: Equatable, Sendable {
         self.rules = rules
         self.hotkeys = hotkeys
         self.binds = binds
+        self.scratchpads = scratchpads
     }
 
     public static let defaultHotkeys: [String: String] = [
@@ -31,6 +34,11 @@ public struct Config: Equatable, Sendable {
         "workspace_4": "alt+4", "workspace_5": "alt+5", "workspace_6": "alt+6", "workspace_7": "alt+7",
         "workspace_8": "alt+8", "workspace_9": "alt+9"
     ]
+
+    /// Applications macwm never tiles, parks or hides: the terminal and every scratchpad.
+    public var unmanagedBundleIdentifiers: Set<String> {
+        Set(scratchpads.values).union([terminalBundleIdentifier])
+    }
 
     public static func parse(_ text: String) -> Config? {
         var config = Config()
@@ -62,6 +70,13 @@ public struct Config: Equatable, Sendable {
             if section == "keys", key.hasPrefix("workspace_") {
                 guard let workspace = Int(key.dropFirst("workspace_".count)), (1...9).contains(workspace), !value.isEmpty else { return nil }
                 config.hotkeys[key] = unquoted(value)
+                continue
+            }
+
+            if section == "scratchpads" {
+                let bundleIdentifier = unquoted(value)
+                guard !key.isEmpty, isValidBundleIdentifier(bundleIdentifier) else { return nil }
+                config.scratchpads[key] = bundleIdentifier
                 continue
             }
 
@@ -115,8 +130,7 @@ public struct Config: Equatable, Sendable {
                 config.barPosition = position
             case "terminal.bundle_id":
                 let bundleIdentifier = unquoted(value)
-                let validBundleIdentifier = !bundleIdentifier.isEmpty && !bundleIdentifier.contains(where: { $0.isWhitespace })
-                guard validBundleIdentifier else { return nil }
+                guard isValidBundleIdentifier(bundleIdentifier) else { return nil }
                 config.terminalBundleIdentifier = bundleIdentifier
             case "general.gap":
                 guard let gap = nonNegativeDouble(value) else { return nil }
@@ -153,6 +167,10 @@ public struct Config: Equatable, Sendable {
 private func unquoted(_ value: String) -> String {
     guard value.count >= 2, value.first == "\"", value.last == "\"" else { return value }
     return String(value.dropFirst().dropLast())
+}
+
+private func isValidBundleIdentifier(_ value: String) -> Bool {
+    !value.isEmpty && !value.contains(where: { $0.isWhitespace })
 }
 
 private func nonNegativeDouble(_ value: String) -> Double? {

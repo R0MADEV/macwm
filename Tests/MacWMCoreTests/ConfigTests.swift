@@ -66,3 +66,19 @@ func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
 @Test func parsesTerminalToggleHotkey() {
     #expect(Config.parse("[keys]\nterminal_toggle = \"ctrl+grave\"")?.hotkeys["terminal_toggle"] == "ctrl+grave")
 }
+
+@Test func parsesScratchpadsAndKeepsThemUnmanaged() {
+    let config = Config.parse("""
+    [terminal]
+    bundle_id = "com.googlecode.iterm2"
+
+    [scratchpads]
+    chat = "net.whatsapp.WhatsApp"
+    notes = "com.apple.Notes"
+    """)
+
+    #expect(config?.scratchpads == ["chat": "net.whatsapp.WhatsApp", "notes": "com.apple.Notes"])
+    #expect(config?.unmanagedBundleIdentifiers == ["com.googlecode.iterm2", "net.whatsapp.WhatsApp", "com.apple.Notes"])
+    #expect(Config.parse("[scratchpads]\nchat = \"\"") == nil)
+    #expect(Config.parse("[scratchpads]\nchat = \"not valid\"") == nil)
+}
