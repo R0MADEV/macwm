@@ -225,8 +225,18 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         return "ok"
     case let .resize(operation):
         guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
-        guard client.resize(focusedWindow, operation: operation) else { return "error: unable to resize window" }
-        refresh(focusedWindow.processID, client: client, store: &store)
+        let activeWorkspace = workspaces.value.activeWorkspace
+        let isTiledInBSP = focusedWindow.isTileable && maximizedFrames[focusedWindow.id] == nil && workspaces.value.layout(for: activeWorkspace, default: configuration.value.layout) == .bsp
+        guard isTiledInBSP else {
+            guard client.resize(focusedWindow, operation: operation) else { return "error: unable to resize window" }
+            refresh(focusedWindow.processID, client: client, store: &store)
+            return "ok"
+        }
+        applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        let delta = operation == .grow ? 0.05 : -0.05
+        guard workspaces.value.adjustSplitRatio(containing: focusedWindow.id, by: delta, in: activeWorkspace) else { return "error: layout is not ready" }
+        applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
         return "ok"
     case .maximize:
         guard let focusedWindow = store.focusedWindow, let currentFrame = focusedWindow.frame else { return "error: no focused window frame" }

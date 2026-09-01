@@ -65,3 +65,19 @@ private func leaf(_ id: UInt64) -> WindowTree { .leaf(WindowID(id)) }
     #expect(v(0.5, leaf(1), leaf(2)).automaticSplitDirection(for: WindowID(2), in: wide) == .horizontal)
     #expect(v(0.5, leaf(1), leaf(2)).lastLeaf == WindowID(2))
 }
+
+@Test func adjustingRatioGrowsTheLeafSideOfItsNearestSplit() {
+    let tree = v(0.5, leaf(1), h(0.5, leaf(2), leaf(3)))
+
+    #expect(tree.adjustingRatio(for: WindowID(1), by: 0.1) == v(0.6, leaf(1), h(0.5, leaf(2), leaf(3))))
+    #expect(tree.adjustingRatio(for: WindowID(3), by: 0.1) == v(0.5, leaf(1), h(0.4, leaf(2), leaf(3))))
+    #expect(tree.adjustingRatio(for: WindowID(99), by: 0.1) == tree)
+    #expect(leaf(1).adjustingRatio(for: WindowID(1), by: 0.1) == leaf(1))
+}
+
+@Test func adjustingRatioStaysWithinBounds() {
+    let tree = v(0.85, leaf(1), leaf(2))
+
+    #expect(tree.adjustingRatio(for: WindowID(1), by: 0.2) == v(0.9, leaf(1), leaf(2)))
+    #expect(tree.adjustingRatio(for: WindowID(2), by: 0.9) == v(0.1, leaf(1), leaf(2)))
+}

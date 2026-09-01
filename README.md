@@ -76,7 +76,7 @@ All commands go through the `macwm` CLI and can be bound to any key under `[bind
 | `macwm focus left\|down\|up\|right` | Focus the nearest visible window in that direction | `Option+H/J/K/L` |
 | `macwm focus next\|prev` | Cycle focus through the visible windows of the workspace, wrapping around | none |
 | `macwm move left\|down\|up\|right` | Swap the focused window with its neighbor in that direction | `Option+Shift+H/J/K/L` |
-| `macwm resize grow\|shrink` | Grow or shrink the focused window | `Option+R` / `Option+Shift+R` |
+| `macwm resize grow\|shrink` | Tiled in BSP: give the window 5% more or less of its split; floating: grow or shrink by 40 points | `Option+R` / `Option+Shift+R` |
 | `macwm maximize` | Toggle between maximized and the previous frame | `Option+M` |
 | `macwm toggle-float` | Toggle floating for the focused window | `Option+F` |
 | `macwm toggle-split` | Flip the split direction of the focused window's node in the BSP tree | none |

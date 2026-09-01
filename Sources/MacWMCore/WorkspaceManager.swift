@@ -140,6 +140,12 @@ public struct WorkspaceManager: Sendable {
         return true
     }
 
+    public mutating func adjustSplitRatio(containing window: WindowID, by delta: Double, in workspace: Int) -> Bool {
+        guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(window) else { return false }
+        trees[workspace] = tree.adjustingRatio(for: window, by: delta)
+        return true
+    }
+
     public mutating func toggleSplit(containing window: WindowID, in workspace: Int) -> Bool {
         guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(window) else { return false }
         trees[workspace] = tree.togglingSplit(containing: window)

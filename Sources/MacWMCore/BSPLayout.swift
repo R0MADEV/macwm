@@ -98,6 +98,19 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
         return leafFrame.width >= leafFrame.height ? .vertical : .horizontal
     }
 
+    /// Gives the side holding `id` more (or less) of its nearest split, so a
+    /// keyboard resize of a tiled window changes the layout instead of fighting it.
+    public func adjustingRatio(for id: WindowID, by delta: Double) -> WindowTree {
+        guard case let .split(direction, ratio, first, second) = self, windowIDs.contains(id) else { return self }
+        let isParentOfWindow = first == .leaf(id) || second == .leaf(id)
+        guard isParentOfWindow else {
+            return .split(direction: direction, ratio: ratio, first: first.adjustingRatio(for: id, by: delta), second: second.adjustingRatio(for: id, by: delta))
+        }
+        let signedDelta = first == .leaf(id) ? delta : -delta
+        let bounded = min(max(ratio + signedDelta, 0.1), 0.9)
+        return .split(direction: direction, ratio: bounded, first: first, second: second)
+    }
+
     /// Flips the direction of the split directly containing `id`, Hyprland's togglesplit.
     public func togglingSplit(containing id: WindowID) -> WindowTree {
         guard case let .split(direction, ratio, first, second) = self, windowIDs.contains(id) else { return self }
