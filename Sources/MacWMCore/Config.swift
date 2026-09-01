@@ -100,7 +100,7 @@ public struct Config: Equatable, Sendable {
                 let mode = section == "binds" ? KeybindEngine.defaultMode : String(section.dropFirst("binds.".count))
                 let bindingText = unquoted(key)
                 let commandText = unquoted(value)
-                guard !mode.isEmpty, KeyBinding.parse(bindingText) != nil, Command.parse(commandText) != nil else { return nil }
+                guard !mode.isEmpty, KeyBinding.isValidSyntax(bindingText), Command.parse(commandText) != nil else { return nil }
                 config.binds[mode, default: [:]][bindingText] = commandText
                 continue
             }

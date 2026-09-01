@@ -20,7 +20,11 @@ let latencyActivity = ProcessInfo.processInfo.beginActivity(
     reason: "macwm global hotkeys and window management"
 )
 let runtimeConfiguration = DaemonConfiguration(ConfigLoader.load())
-let keybinds = DaemonKeybinds(runtimeConfiguration.value.keybindEngine())
+let keybinds = DaemonKeybinds(runtimeConfiguration.value.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
+let keyboardLayoutObserver = DistributedNotificationCenter.default().addObserver(forName: KeyboardLayout.changedNotification, object: nil, queue: .main) { _ in
+    keybinds.replace(runtimeConfiguration.value.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
+    print("macwm: keyboard layout changed; hotkeys rebuilt")
+}
 let mouseTargets = MouseTargets()
 let client = AXClient(rules: runtimeConfiguration.value.rules)
 let workspacePersistence = WorkspacePersistence()
@@ -218,7 +222,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     case .reload:
         guard let updatedConfiguration = ConfigLoader.loadValidated() else { return "error: invalid configuration" }
         configuration.value = updatedConfiguration
-        keybinds.replace(updatedConfiguration.keybindEngine())
+        keybinds.replace(updatedConfiguration.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
         focusFollowsMouse.setEnabled(updatedConfiguration.focusFollowsMouse)
         client.updateRules(configuration.value.rules)
         for window in managedWindows(client) {

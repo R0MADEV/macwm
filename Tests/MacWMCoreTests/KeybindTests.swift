@@ -93,3 +93,26 @@ private func press(_ text: String) -> KeyBinding { KeyBinding.parse(text)! }
     #expect(Command.mode("resize").wireValue == "mode resize")
     #expect(Command.parse(["mode"]) == nil)
 }
+
+@Test func layoutTableResolvesLiteralCharactersAndSymbolNames() {
+    // Spanish ISO: ñ sits on the US semicolon key, < on the US grave key, - on the US slash key.
+    let table = KeyCodeTable(layoutCharacters: ["ñ": 41, "<": 50, "-": 44, "a": 0])
+
+    #expect(KeyBinding.parse("alt+ñ", keyCodes: table) == KeyBinding(keyCode: 41, modifiers: [.alt]))
+    #expect(KeyBinding.parse("alt+<", keyCodes: table)?.keyCode == 50)
+    #expect(KeyBinding.parse("minus", keyCodes: table)?.keyCode == 44)
+    #expect(KeyBinding.parse("grave", keyCodes: table)?.keyCode == 50)
+    #expect(KeyBinding.parse("return", keyCodes: table)?.keyCode == 36)
+    #expect(KeyBinding.parse("alt+ñ") == nil)
+}
+
+@Test func configAcceptsLayoutOnlyKeysAndResolvesThemPerLayout() {
+    let config = Config.parse("[binds]\n\"alt+ñ\" = \"close\"")
+    #expect(config != nil)
+
+    var ansi = config!.keybindEngine()
+    #expect(ansi.handle(KeyBinding(keyCode: 41, modifiers: [.alt])) == .unbound)
+
+    var spanish = config!.keybindEngine(keyCodes: KeyCodeTable(layoutCharacters: ["ñ": 41]))
+    #expect(spanish.handle(KeyBinding(keyCode: 41, modifiers: [.alt])) == .command(.close))
+}
