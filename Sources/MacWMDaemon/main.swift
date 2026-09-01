@@ -26,7 +26,7 @@ let keyboardLayoutObserver = DistributedNotificationCenter.default().addObserver
     print("macwm: keyboard layout changed; hotkeys rebuilt")
 }
 let mouseTargets = MouseTargets()
-let client = AXClient(rules: runtimeConfiguration.value.rules)
+let client = AXClient(rules: runtimeConfiguration.value.rules, barPosition: runtimeConfiguration.value.barPosition)
 let workspacePersistence = WorkspacePersistence()
 let persistedState = workspacePersistence.loadState()
 let workspaces = DaemonWorkspaces(assignments: persistedState.assignments, activeWorkspace: persistedState.activeWorkspace, trees: persistedState.trees ?? [:], layouts: persistedState.layouts ?? [:])
@@ -232,6 +232,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         keybinds.replace(updatedConfiguration.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
         focusFollowsMouse.setEnabled(updatedConfiguration.focusFollowsMouse)
         client.updateRules(configuration.value.rules)
+        client.updateBarPosition(configuration.value.barPosition)
         for window in managedWindows(client) {
             store.upsert(window)
             workspaces.value.register(window, rules: configuration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)

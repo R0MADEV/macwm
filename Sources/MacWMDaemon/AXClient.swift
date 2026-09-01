@@ -5,9 +5,15 @@ import MacWMCore
 
 final class AXClient {
     private var rules: [WindowRule]
+    private var barPosition: BarPosition
 
-    init(rules: [WindowRule] = []) {
+    init(rules: [WindowRule] = [], barPosition: BarPosition = .top) {
         self.rules = rules
+        self.barPosition = barPosition
+    }
+
+    func updateBarPosition(_ position: BarPosition) {
+        barPosition = position
     }
 
     func updateRules(_ rules: [WindowRule]) {
@@ -197,14 +203,14 @@ final class AXClient {
     /// Visible area (without menu bar and Dock) of the screen holding the window, in Accessibility coordinates.
     func visibleScreenFrame(for window: ManagedWindow) -> Frame? {
         guard let currentFrame = window.frame, let screen = screen(for: currentFrame) else { return nil }
-        return accessibilityFrame(for: screen.visibleFrame)
+        return accessibilityFrame(for: screen.visibleFrame).reserving(bar: barPosition, screen: accessibilityFrame(for: screen.frame))
     }
 
     /// Visible area of the primary screen in Accessibility coordinates, the
     /// frame every layout is computed in.
     func layoutFrame() -> Frame? {
         guard let screen = NSScreen.screens.first else { return nil }
-        return accessibilityFrame(for: screen.visibleFrame)
+        return accessibilityFrame(for: screen.visibleFrame).reserving(bar: barPosition, screen: accessibilityFrame(for: screen.frame))
     }
 
     /// Full frame of the screen holding the window, in Accessibility coordinates.

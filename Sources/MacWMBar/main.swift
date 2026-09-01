@@ -78,9 +78,15 @@ final class BarController: NSObject {
         panel.delegate = self
     }
 
+    /// Builds the bar for the current position; safe to call again when it changes.
     private func configureContent() {
+        for view in workspaceStack.arrangedSubviews + statusStack.arrangedSubviews {
+            view.removeFromSuperview()
+        }
+        NSLayoutConstraint.deactivate(workspaceStack.constraints.filter { $0.firstItem === workspaceStack && $0.secondItem == nil })
+        statusLabels.removeAll()
         let root = NSStackView()
-        let isVertical = position == .left || position == .right
+        let isVertical = position.isVertical
         let orientation: NSUserInterfaceLayoutOrientation = isVertical ? .vertical : .horizontal
         root.orientation = orientation
         root.alignment = isVertical ? .centerX : .centerY
@@ -222,8 +228,9 @@ final class BarController: NSObject {
         guard let workspace = notification.userInfo?["workspace"] as? Int else { return }
         activeWorkspace = workspace
         mode = notification.userInfo?["mode"] as? String ?? "default"
-        if let rawPosition = notification.userInfo?["position"] as? String, let position = BarPosition(rawValue: rawPosition) {
+        if let rawPosition = notification.userInfo?["position"] as? String, let position = BarPosition(rawValue: rawPosition), position != self.position {
             self.position = position
+            configureContent()
             repositionPanel()
         }
         if let counts = notification.userInfo?["windows"] as? [String: Int] {
@@ -293,7 +300,7 @@ final class BarController: NSObject {
     private func repositionPanel() {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let isVertical = position == .left || position == .right
-        let thickness = CGFloat(isVertical ? 110 : 34)
+        let thickness = CGFloat(position.thickness)
         let screenFrame = screen.frame
         let frame: NSRect
         switch position {
