@@ -297,8 +297,7 @@ final class BarController: NSObject {
     }
 
     private static func loadConfig() -> Config {
-        let path = NSString(string: "~/.config/macwm/config.toml").expandingTildeInPath
-        guard let text = try? String(contentsOfFile: path, encoding: .utf8), let config = Config.parse(text) else {
+        guard let file = ConfigFile.read(), let config = ConfigFile.parse(file.text, isHyprland: file.isHyprland) else {
             return Config()
         }
         return config

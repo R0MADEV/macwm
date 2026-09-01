@@ -238,6 +238,54 @@ macwm reload
 
 Copy `example-config.toml` to `~/.config/macwm/config.toml`, edit it, then run `macwm reload`.
 
+### Hyprland dialect
+
+If `~/.config/macwm/macwm.conf` exists it is used instead of `config.toml`, and it is read as a Hyprland configuration, so most of a Hyprland dotfile works after changing window classes to bundle identifiers:
+
+```
+$mod = ALT
+
+general {
+    gaps_in = 6
+    gaps_out = 12
+    layout = dwindle
+    terminal = com.googlecode.iterm2
+}
+
+dwindle {
+    no_gaps_when_only = 1
+}
+
+input {
+    follow_mouse = 1
+}
+
+exec-once = sketchybar
+
+bind = $mod, H, movefocus, l
+bind = $mod SHIFT, H, movewindow, l
+bind = $mod, 1, workspace, 1
+bind = $mod SHIFT, 1, movetoworkspace, 1
+bind = $mod, Q, killactive
+bind = $mod, F, togglefloating
+bind = $mod, Return, exec, open -a iTerm
+bind = $mod, W, togglespecialworkspace, chat
+bind = $mod, R, submap, resize
+
+submap = resize
+binde = , L, resizeactive, 10 0
+binde = , H, resizeactive, -10 0
+bind = , escape, submap, reset
+submap = reset
+
+scratchpad = chat, net.whatsapp.WhatsApp
+windowrule = float, class:^(com.apple.finder)$
+windowrulev2 = workspace 2, class:^(com\.microsoft\.VSCode)$
+```
+
+Supported dispatchers: `movefocus`, `movewindow`, `swapwindow`, `workspace` (numbers and `previous`), `movetoworkspace`, `movetoworkspacesilent`, `killactive`, `togglefloating`, `fullscreen` (maps to `maximize`), `togglesplit`, `centerwindow`, `cyclenext`, `exec`, `submap`, `togglespecialworkspace` (maps to `scratchpad`), `resizeactive` and `splitratio` (sign chooses grow or shrink) and `layoutmsg preselect`. Window rules understand `float`, `tile`, `center`, `workspace N` and `size W H` with `class:` as the bundle identifier and `title:`; rules for the same matcher merge. `general.terminal` and `scratchpad = name, bundle.id` are macwm extensions. Dispatchers and sections without a macOS equivalent, `decoration`, `animations`, `bindm`, are ignored; malformed values reject the file, as with the TOML format.
+
+
 ### Terminal
 
 The global terminal toggle works with any installed terminal application. Configure its bundle identifier:
