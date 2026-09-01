@@ -195,6 +195,9 @@ final class BarController: NSObject {
     @objc private func selectWorkspace(_ sender: NSButton) {
         guard let command = Command.parse(["workspace", String(sender.tag)]) else { return }
         _ = client.send(command)
+        guard let response = client.send(.status), let workspace: Int = Self.value("workspace", from: response) else { return }
+        activeWorkspace = workspace
+        updateContent()
     }
 
     @objc private func stateChanged(_ notification: Notification) {
