@@ -69,6 +69,7 @@ All commands go through the `macwm` CLI and can be bound to any key under `[bind
 | Command | What it does | Default hotkey |
 | --- | --- | --- |
 | `macwm status` | Active workspace, layout, hotkey mode, window count and focused window | none |
+| `macwm query state\|windows\|workspaces` | The same and more as JSON, for scripts and external bars (see IPC) | none |
 | `macwm reload` | Reload `~/.config/macwm/config.toml`: rules, hotkeys, modes, scratchpads, terminal, bar | none |
 | `macwm layout bsp\|stack\|monocle\|master` | Set the layout of the active workspace | none |
 | `macwm workspace N` | Switch to workspace `N` (1 to 9) and focus the window you last used there | `Option+N` |
@@ -107,6 +108,29 @@ The daemon applies the configured layout to the primary display when it starts a
 The daemon must be running before using the CLI.
 
 `macwm-bar` is included in the distribution and runs independently from the daemon. It receives workspace changes through native macOS notifications and does not poll.
+
+## IPC
+
+Scripts and external bars such as sketchybar have two entry points.
+
+`macwm query` returns JSON on one line with sorted keys:
+
+```bash
+macwm query state        # {"focused":{...},"layout":"bsp","mode":"default","windows":[...],"workspace":2,"workspaces":[...]}
+macwm query workspaces   # [{"active":false,"id":1,"windows":2},{"active":true,"id":2,"windows":1},...]
+macwm query windows      # [{"app":"Code","bundleIdentifier":"com.microsoft.VSCode","floating":false,"focused":true,"frame":{...},"hidden":false,"id":...,"title":"...","workspace":2},...]
+```
+
+The events socket at `/tmp/macwm-events.sock` pushes one JSON line per change, `{"event":"state","state":{...}}` with the same state object, whenever the workspace, layout, mode, window set or focus changes. Connect and read lines:
+
+```bash
+nc -U /tmp/macwm-events.sock | while read -r line; do
+  workspace=$(printf '%s' "$line" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["state"]["workspace"])')
+  sketchybar --set workspace label="$workspace"
+done
+```
+
+`macwm-bar` keeps using native distributed notifications and does not depend on the socket.
 
 ## Packaging
 

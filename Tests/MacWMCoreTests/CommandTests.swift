@@ -43,3 +43,11 @@ import Testing
     #expect(Command.preselect(.vertical).wireValue == "preselect vertical")
     #expect(Command.parse(["preselect", "diagonal"]) == nil)
 }
+
+@Test func parsesQueryCommands() {
+    #expect(Command.parse(["query", "state"]) == .query(.state))
+    #expect(Command.parse(["query", "windows"]) == .query(.windows))
+    #expect(Command.parse(["query", "workspaces"]) == .query(.workspaces))
+    #expect(Command.query(.windows).wireValue == "query windows")
+    #expect(Command.parse(["query", "moon"]) == nil)
+}

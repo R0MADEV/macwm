@@ -113,3 +113,68 @@ private enum UnixSocketAddress {
         return true
     }
 }
+
+/// Pushes newline-delimited messages to every connected client, for bars and
+/// scripts that want events instead of polling. Clients that stop reading are
+/// dropped on the next write.
+public final class UnixSocketBroadcaster: @unchecked Sendable {
+    private let path: String
+    private let fileDescriptor: Int32
+    private let source: DispatchSourceRead
+    private var clients: [Int32] = []
+
+    public init?(path: String) {
+        self.path = path
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return nil }
+        fileDescriptor = descriptor
+
+        _ = path.withCString { unlink($0) }
+        var address = sockaddr_un()
+        guard UnixSocketAddress.write(path, to: &address) else {
+            close(descriptor)
+            return nil
+        }
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard bound == 0, listen(descriptor, 8) == 0 else {
+            close(descriptor)
+            _ = path.withCString { unlink($0) }
+            return nil
+        }
+
+        source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: .main)
+        source.setEventHandler { [weak self] in self?.acceptConnection() }
+        source.setCancelHandler { [path] in
+            close(descriptor)
+            _ = path.withCString { unlink($0) }
+        }
+        source.resume()
+    }
+
+    deinit {
+        for client in clients { close(client) }
+        source.cancel()
+    }
+
+    public func broadcast(_ message: String) {
+        let output = Array((message + "\n").utf8)
+        clients.removeAll { client in
+            let written = output.withUnsafeBytes { send(client, $0.baseAddress, output.count, 0) }
+            let isDead = written != output.count
+            if isDead { close(client) }
+            return isDead
+        }
+    }
+
+    private func acceptConnection() {
+        let client = accept(fileDescriptor, nil, nil)
+        guard client >= 0 else { return }
+        var noSignal: Int32 = 1
+        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
+        clients.append(client)
+    }
+}

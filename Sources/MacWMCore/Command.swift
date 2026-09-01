@@ -1,5 +1,11 @@
+public enum Query: String, Equatable, Sendable {
+    case state, windows, workspaces
+}
+
 public enum Command: Equatable, Sendable {
     case status
+    /// JSON view of the daemon state for scripts and external bars.
+    case query(Query)
     case reload
     case layout(LayoutKind)
     case workspace(Int)
@@ -35,6 +41,9 @@ public enum Command: Equatable, Sendable {
 
         switch name {
         case "status": return arguments.count == 1 ? .status : nil
+        case "query":
+            guard arguments.count == 2, let value else { return nil }
+            return Query(rawValue: value).map(Command.query)
         case "reload": return arguments.count == 1 ? .reload : nil
         case "layout":
             guard arguments.count == 2, let value else { return nil }
@@ -73,6 +82,7 @@ public enum Command: Equatable, Sendable {
     public var wireValue: String {
         switch self {
         case .status: return "status"
+        case let .query(query): return "query \(query.rawValue)"
         case .reload: return "reload"
         case let .layout(layout): return "layout \(layout.rawValue)"
         case let .workspace(workspace): return "workspace \(workspace)"
