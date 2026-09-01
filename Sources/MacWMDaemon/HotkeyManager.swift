@@ -16,6 +16,7 @@ final class HotkeyManager: @unchecked Sendable {
 
     private var eventTap: CFMachPort? = nil
     private var runLoopSource: CFRunLoopSource? = nil
+    private var tapRunLoop: CFRunLoop? = nil
     private let handler: (Action) -> Void
     private let runtimeConfiguration: DaemonConfiguration
 
@@ -36,16 +37,31 @@ final class HotkeyManager: @unchecked Sendable {
         self.eventTap = eventTap
         guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0) else { return nil }
         self.runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: eventTap, enable: true)
+        startTapThread()
     }
 
     deinit {
         guard let eventTap else { return }
         CGEvent.tapEnable(tap: eventTap, enable: false)
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        guard let tapRunLoop, let runLoopSource else { return }
+        CFRunLoopRemoveSource(tapRunLoop, runLoopSource, .commonModes)
+        CFRunLoopStop(tapRunLoop)
+    }
+
+    /// The tap is active and sits in front of every key press in the session,
+    /// so it must never wait on the main thread, which blocks on Accessibility
+    /// calls to busy applications. Matching only dispatches to main and returns.
+    private func startTapThread() {
+        let thread = Thread { [self] in
+            guard let eventTap, let runLoopSource else { return }
+            tapRunLoop = CFRunLoopGetCurrent()
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+            CGEvent.tapEnable(tap: eventTap, enable: true)
+            CFRunLoopRun()
         }
+        thread.name = "macwm.hotkeys"
+        thread.qualityOfService = .userInteractive
+        thread.start()
     }
 
     fileprivate func handle(_ event: CGEvent) -> Unmanaged<CGEvent>? {

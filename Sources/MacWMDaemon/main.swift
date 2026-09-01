@@ -67,13 +67,9 @@ let observerRegistry = AXObserverRegistry { processID, event in
         switch event {
         case .focusedWindowChanged(_):
             guard !layoutGuard.isApplying else { return }
-            guard let focusedWindow = client.focusedWindowElement(for: application) else { return }
-            let focusedID = WindowID(
-                processID: UInt32(application.processIdentifier),
-                elementHash: Int(truncatingIfNeeded: CFHash(focusedWindow))
-            )
-            guard let window = client.windows(for: application).first(where: { $0.id == focusedID }) else { return }
-            guard isManaged(window) else { return }
+            // Only the focused window is read: enumerating every window of an
+            // application that is busy handling a click stalls the daemon.
+            guard let window = client.focusedWindow(for: application), isManaged(window) else { return }
             store.upsert(window)
             workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
             store.setFocusedWindow(window.id)
