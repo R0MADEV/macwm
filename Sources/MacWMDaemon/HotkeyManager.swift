@@ -61,6 +61,11 @@ final class HotkeyManager: @unchecked Sendable {
         case .unbound:
             return Unmanaged.passUnretained(event)
         case .consumed:
+            // A mode switch happened on this thread; let main publish the new mode.
+            let mode = keybinds.mode
+            DispatchQueue.main.async { [weak self] in
+                self?.handler(.mode(mode))
+            }
             return nil
         case let .command(command):
             DispatchQueue.main.async { [weak self] in

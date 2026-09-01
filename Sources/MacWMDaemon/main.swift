@@ -13,6 +13,12 @@ guard AXIsProcessTrustedWithOptions(permissionOptions) else {
     exit(EXIT_FAILURE)
 }
 
+// The daemon fronts every key press and reacts to focus changes, so macOS must
+// never App Nap it: the first key after an idle period would pay the wake-up.
+let latencyActivity = ProcessInfo.processInfo.beginActivity(
+    options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+    reason: "macwm global hotkeys and window management"
+)
 let runtimeConfiguration = DaemonConfiguration(ConfigLoader.load())
 let keybinds = DaemonKeybinds(runtimeConfiguration.value.keybindEngine())
 let client = AXClient(rules: runtimeConfiguration.value.rules)
@@ -233,6 +239,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         return "ok"
     case let .mode(name):
         keybinds.enter(mode: name)
+        notifyBar(workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.layout).rawValue, position: configuration.value.barPosition, workspaces: workspaces.value)
         return "ok"
     }
 }
@@ -352,7 +359,7 @@ private func notifyBar(workspace: Int, layout: String, position: BarPosition = .
     DistributedNotificationCenter.default().post(
         name: stateNotification,
         object: nil,
-        userInfo: ["workspace": workspace, "layout": layout, "position": position.rawValue, "windows": counts]
+        userInfo: ["workspace": workspace, "layout": layout, "position": position.rawValue, "windows": counts, "mode": keybinds.mode]
     )
 }
 

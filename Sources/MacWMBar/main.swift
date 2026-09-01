@@ -20,6 +20,7 @@ final class BarController: NSObject {
     private var previousCPUTicks: [UInt32]?
     private var previousNetworkBytes: (input: UInt64, output: UInt64)?
     private var activeWorkspace = 1
+    private var mode = "default"
     private var workspaceWindowCounts: [Int: Int] = [:]
 
     override init() {
@@ -189,6 +190,7 @@ final class BarController: NSObject {
             return
         }
         activeWorkspace = Self.value("workspace", from: response) ?? 1
+        mode = Self.value("mode", from: response) ?? "default"
         updateContent()
     }
 
@@ -203,6 +205,7 @@ final class BarController: NSObject {
     @objc private func stateChanged(_ notification: Notification) {
         guard let workspace = notification.userInfo?["workspace"] as? Int else { return }
         activeWorkspace = workspace
+        mode = notification.userInfo?["mode"] as? String ?? "default"
         if let rawPosition = notification.userInfo?["position"] as? String, let position = BarPosition(rawValue: rawPosition) {
             self.position = position
             repositionPanel()
@@ -255,7 +258,8 @@ final class BarController: NSObject {
     }
 
     private func updateContent() {
-        workspaceLabel.stringValue = "WS \(activeWorkspace)"
+        let isInMode = mode != "default"
+        workspaceLabel.stringValue = isInMode ? "WS \(activeWorkspace) · \(mode.uppercased())" : "WS \(activeWorkspace)"
         for case let button as NSButton in workspaceStack.arrangedSubviews {
             let isActive = button.tag == activeWorkspace
             let count = workspaceWindowCounts[button.tag] ?? 0
