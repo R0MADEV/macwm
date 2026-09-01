@@ -64,34 +64,29 @@ parameter changes and sleep/wake trigger a rescan; layout still uses the
 primary display. `AXWindowNumber` is used when CoreGraphics can correlate it,
 with the historical bundle/title fallback for older state files.
 
-The current IPC commands are:
+All commands go through the `macwm` CLI and can be bound to any key under `[binds]` (see Custom Hotkeys). The hotkey column lists the defaults that ship with macwm.
 
-```bash
-macwm status
-macwm focus left
-macwm move right
-macwm resize grow
-macwm resize shrink
-macwm workspace 2
-macwm send-to-workspace 3
-macwm layout bsp
-macwm layout stack
-macwm layout monocle
-macwm layout master
-macwm reload
-macwm toggle-float
-macwm maximize
-macwm toggle-terminal
-macwm close
-macwm focus next
-macwm focus prev
-macwm toggle-split
-macwm exec open -a Safari
-macwm mode resize
-macwm scratchpad chat
-```
+| Command | What it does | Default hotkey |
+| --- | --- | --- |
+| `macwm status` | Active workspace, layout, hotkey mode, window count and focused window | none |
+| `macwm reload` | Reload `~/.config/macwm/config.toml`: rules, hotkeys, modes, scratchpads, terminal, bar | none |
+| `macwm layout bsp\|stack\|monocle\|master` | Set the layout of the active workspace | none |
+| `macwm workspace N` | Switch to workspace `N` (1 to 9) and focus the window you last used there | `Option+N` |
+| `macwm send-to-workspace N` | Send the focused window to workspace `N` | `Option+Shift+N` |
+| `macwm focus left\|down\|up\|right` | Focus the nearest visible window in that direction | `Option+H/J/K/L` |
+| `macwm focus next\|prev` | Cycle focus through the visible windows of the workspace, wrapping around | none |
+| `macwm move left\|down\|up\|right` | Swap the focused window with its neighbor in that direction | `Option+Shift+H/J/K/L` |
+| `macwm resize grow\|shrink` | Grow or shrink the focused window | `Option+R` / `Option+Shift+R` |
+| `macwm maximize` | Toggle between maximized and the previous frame | `Option+M` |
+| `macwm toggle-float` | Toggle floating for the focused window | `Option+F` |
+| `macwm toggle-split` | Flip the split direction of the focused window's node in the BSP tree | none |
+| `macwm close` | Press the focused window's close button | none |
+| `macwm toggle-terminal` | Show or hide the configured terminal covering the screen | `` ` `` (grave) |
+| `macwm scratchpad NAME` | Show or hide a scratchpad application configured under `[scratchpads]` | none |
+| `macwm exec COMMAND...` | Run the rest of the line through your login shell | none |
+| `macwm mode NAME` | Enter a hotkey mode; `mode default` leaves it | none |
 
-`close` presses the focused window's close button. `focus next` and `focus prev` cycle through the visible windows of the active workspace. `toggle-split` flips the split direction of the focused window's parent node in the BSP tree. `exec` runs the rest of the line through your login shell, so anything that works in a terminal works here. None of these have default hotkeys; bind them under `[binds]`, for example:
+Commands without a default hotkey are meant to be bound in `[binds]`, for example:
 
 ```toml
 [binds]
@@ -100,6 +95,8 @@ macwm scratchpad chat
 "alt+shift+tab" = "focus prev"
 "alt+e" = "toggle-split"
 "alt+return" = "exec open -a iTerm"
+"alt+w" = "scratchpad chat"
+"alt+r" = "mode resize"
 ```
 
 The daemon applies the configured layout to the primary display when it starts and when Accessibility reports a new window. Default gaps are `8` points. `Option+R` grows the focused window and `Option+Shift+R` shrinks it. `Option+M` toggles maximize and restore.
@@ -151,18 +148,24 @@ bootstraps both LaunchAgents without editing the macwm config file.
 
 ## Shortcuts
 
+Default hotkeys. `Option` is the `alt` modifier in the configuration.
+
 | Shortcut | Action |
 | --- | --- |
 | `Option+H` | Focus left |
 | `Option+J` | Focus down |
 | `Option+K` | Focus up |
 | `Option+L` | Focus right |
-| `Option+Shift+H/J/K/L` | Swap focused window with directional neighbor |
+| `Option+Shift+H/J/K/L` | Swap focused window with its neighbor in that direction |
 | `Option+R` | Grow focused window |
 | `Option+Shift+R` | Shrink focused window |
+| `Option+M` | Toggle maximize and restore |
 | `Option+F` | Toggle focused window floating |
 | `Option+1..9` | Switch workspace |
 | `Option+Shift+1..9` | Send window to workspace |
+| `` ` `` (grave) | Show or hide the terminal |
+
+Every default can be changed under `[keys]`, and any command in the table above can be bound to any key or grouped into a mode under `[binds]`; see Custom Hotkeys. Inside a mode only that mode's bindings apply until you leave it, and the bar shows the mode name next to the workspace.
 
 When BSP is active, `move` is structural: it swaps the focused window with the nearest tileable window in that direction and recalculates all cells. It does not translate a window by a fixed pixel distance.
 
