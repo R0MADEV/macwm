@@ -299,7 +299,6 @@ final class BarController: NSObject {
 
     private func repositionPanel() {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let isVertical = position == .left || position == .right
         let thickness = CGFloat(position.thickness)
         let screenFrame = screen.frame
         let frame: NSRect
