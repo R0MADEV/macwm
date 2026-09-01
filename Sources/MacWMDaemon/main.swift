@@ -25,6 +25,14 @@ let application = NSApplication.shared
 application.setActivationPolicy(.accessory)
 let runtimeConfiguration = DaemonConfiguration(ConfigLoader.load())
 let focusBorder = FocusBorder()
+let groupTabBars = GroupTabBars { id in
+    workspaces.value.showGroupMember(id)
+    applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+    guard let window = store.windows.first(where: { $0.id == id }), let element = client.element(for: window), client.focus(element) else { return }
+    store.setFocusedWindow(id)
+    workspaces.value.recordFocus(id)
+    updateFocusBorder(store: store, config: runtimeConfiguration.value, workspaces: workspaces.value)
+}
 let keybinds = DaemonKeybinds(runtimeConfiguration.value.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
 let keyboardLayoutObserver = DistributedNotificationCenter.default().addObserver(forName: KeyboardLayout.changedNotification, object: nil, queue: .main) { _ in
     keybinds.replace(runtimeConfiguration.value.keybindEngine(keyCodes: KeyboardLayout.currentTable()))
@@ -97,6 +105,11 @@ let observerRegistry = AXObserverRegistry { processID, event in
             store.setFocusedWindow(window.id)
             workspaces.value.recordFocus(window.id)
             print("macwm: focused \(window.appName) - \(window.title)")
+            let isHiddenGroupMember = workspaces.value.hiddenGroupMembers(among: [window.id]).contains(window.id)
+            if isHiddenGroupMember {
+                workspaces.value.showGroupMember(window.id)
+                applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+            }
             updateFocusBorder(store: store, config: runtimeConfiguration.value, workspaces: workspaces.value)
             if isNewWindow {
                 if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
@@ -381,6 +394,32 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
         return "ok"
+    case let .group(command):
+        guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
+        let activeWorkspace = workspaces.value.activeWorkspace
+        var windowToFocus: WindowID?
+        switch command {
+        case .toggle:
+            guard workspaces.value.toggleGroup(containing: focusedWindow.id, in: activeWorkspace) else { return "error: window is not in this workspace" }
+        case let .add(direction):
+            let candidateIDs = activeWorkspaceWindowIDs(store: store, workspaces: workspaces.value, tileableOnly: true)
+            guard let target = store.window(in: direction, among: candidateIDs) else { return "error: no window in direction" }
+            guard workspaces.value.addToGroup(focusedWindow.id, containing: target.id, in: activeWorkspace) else { return "error: unable to group" }
+        case .leave:
+            guard workspaces.value.leaveGroup(focusedWindow.id, in: activeWorkspace) else { return "error: window is not grouped" }
+        case let .cycle(forward):
+            guard let next = workspaces.value.cycleGroup(containing: focusedWindow.id, forward: forward) else { return "error: window is not grouped" }
+            windowToFocus = next
+        }
+        applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+        if let windowToFocus, let window = store.windows.first(where: { $0.id == windowToFocus }), let element = client.element(for: window), client.focus(element) {
+            store.setFocusedWindow(windowToFocus)
+            workspaces.value.recordFocus(windowToFocus)
+            warpCursor(to: window, enabled: configuration.value.cursorWarp)
+            updateFocusBorder(store: store, config: configuration.value, workspaces: workspaces.value)
+        }
+        return "ok"
     case let .master(command):
         switch command {
         case .grow: configuration.value.master.adjustRatio(by: 0.05)
@@ -506,10 +545,11 @@ private func updateFocusBorder(store: WindowStore, config: Config, workspaces: W
 }
 
 private func activeWorkspaceWindowIDs(store: WindowStore, workspaces: WorkspaceManager, tileableOnly: Bool) -> Set<WindowID> {
-    Set(store.windows.filter { window in
+    let ids = store.windows.filter { window in
         let isVisibleInActiveWorkspace = !window.isHidden && workspaces.workspace(for: window.id) == workspaces.activeWorkspace
         return isVisibleInActiveWorkspace && (!tileableOnly || window.isTileable)
-    }.map(\.id))
+    }.map(\.id)
+    return Set(ids).subtracting(workspaces.hiddenGroupMembers(among: ids))
 }
 
 /// Runs a command line through the user's login shell so PATH and profile
@@ -598,7 +638,7 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     let tileableWindows = store.windows.filter {
         $0.isTileable && $0.frame != nil && maximizedFrames[$0.id] == nil && workspaces.workspace(for: $0.id) == workspaces.activeWorkspace
     }
-    let windowIDs = tileableWindows.map(\.id)
+    let windowIDs = workspaces.layoutLeaves(for: tileableWindows.map(\.id))
     let layout = workspaces.layout(for: workspaces.activeWorkspace, default: config.layout)
     let frames: [WindowID: Frame]
     let gaps = LayoutEngine.gaps(outer: config.outerGap, inner: config.innerGap, smart: config.smartGaps, windowCount: windowIDs.count)
@@ -609,9 +649,22 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     }
     let monocleHiddenIDs = layout == .monocle ? monocleHiddenWindowIDs(tileableWindows, focusedID: store.focusedWindow?.id) : []
     var changes: [AXClient.FrameChange] = []
+    var tabGroups: [GroupTabBars.Group] = []
     for window in tileableWindows {
-        if monocleHiddenIDs.contains(window.id) {
+        let isHiddenByGroup = workspaces.hiddenGroupMembers(among: [window.id]).contains(window.id)
+        if monocleHiddenIDs.contains(window.id) || isHiddenByGroup {
             if let (change, _) = parkChange(for: window, keepsFrame: false, client: client) { changes.append(change) }
+            continue
+        }
+        if let members = workspaces.group(containing: window.id), let leader = members.first, let tile = frames[leader] {
+            // Only the active member is here; it takes the leader's tile under the tab strip.
+            let hasTabs = members.count > 1
+            let frame = hasTabs ? Frame(x: tile.x, y: tile.y + GroupTabBars.height, width: tile.width, height: max(0, tile.height - GroupTabBars.height)) : tile
+            changes.append(AXClient.FrameChange(window: window, frame: frame, positionOnly: false))
+            if hasTabs {
+                let titles = members.map { id in (id, store.windows.first { $0.id == id }?.title ?? "") }
+                tabGroups.append(GroupTabBars.Group(leader: leader, members: titles, active: window.id, frame: tile))
+            }
             continue
         }
         guard let frame = frames[window.id] else { continue }
@@ -621,6 +674,7 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     for change in changes where applied.contains(change.window.id) {
         store.updateFrame(change.frame, for: change.window.id)
     }
+    MainActor.assumeIsolated { groupTabBars.update(tabGroups) }
     print("macwm: applied \(layout.rawValue) to \(applied.count)/\(tileableWindows.count) windows")
     updateFocusBorder(store: store, config: config, workspaces: workspaces)
 }

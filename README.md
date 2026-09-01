@@ -86,6 +86,7 @@ All commands go through the `macwm` CLI and can be bound to any key under `[bind
 | `macwm toggle-split` | Flip the split direction of the focused window's node in the BSP tree | none |
 | `macwm preselect vertical\|horizontal` | Choose how the next window opened in the workspace splits the focused one | none |
 | `macwm master grow\|shrink\|add\|remove\|orientation left\|right\|top\|bottom\|next` | Shape the master layout: master ratio, number of masters and the side they take | none |
+| `macwm group toggle\|add left\|right\|up\|down\|remove\|next\|prev` | Tab groups: start or dissolve one, pull the neighbor in, leave, cycle the visible member | none |
 | `macwm close` | Press the focused window's close button | none |
 | `macwm toggle-terminal` | Show or hide the configured terminal covering the screen | `` ` `` (grave) |
 | `macwm scratchpad NAME` | Show or hide a scratchpad application configured under `[scratchpads]` | none |
@@ -335,6 +336,22 @@ bar = "sketchybar"
 ```
 
 `smart_gaps` removes every gap when a workspace shows a single tiled window, like `no_gaps_when_only` in Hyprland. `[autostart]` is the equivalent of `exec-once`: each command line runs once through your login shell when the daemon starts, in the order of the names.
+
+### Tab groups
+
+Several windows can share one tile like tabs, Hyprland's `togglegroup`:
+
+```toml
+[binds]
+"alt+g" = "group toggle"
+"alt+shift+g" = "group remove"
+"alt+ctrl+h" = "group add left"
+"alt+ctrl+l" = "group add right"
+"alt+bracketright" = "group next"
+"alt+bracketleft" = "group prev"
+```
+
+`group toggle` turns the focused window into a group of one, or dissolves the group it is in, giving every member its own tile again. `group add <direction>` pulls the focused window into the neighbor in that direction, creating a group there when needed, and shows it. `group remove` takes the focused window out into a tile next to the group. `group next` and `group prev` cycle the visible member; clicking a tab does the same. A strip above the group lists its members with the visible one highlighted. Hidden members are parked off-screen and skipped by keyboard focus; focusing one another way, for example through `Cmd+Tab`, brings it to the front of its group. Groups are not kept across daemon restarts. In the Hyprland dialect, `togglegroup`, `moveintogroup`, `moveoutofgroup` and `changegroupactive` map onto these.
 
 ### Focus border
 

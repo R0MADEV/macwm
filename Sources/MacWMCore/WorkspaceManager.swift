@@ -11,6 +11,7 @@ public struct WorkspaceManager: Sendable {
     private var layouts: [Int: LayoutKind]
     private var lastFocused: [Int: WindowID] = [:]
     private var preselections: [Int: SplitDirection] = [:]
+    private var groups = WindowGroups()
 
     public init(count: Int = 9, assignments: [WindowKey: Int] = [:], activeWorkspace: Int = 1, trees: [Int: WindowTree] = [:], layouts: [Int: LayoutKind] = [:]) {
         let normalizedCount = max(1, count)
@@ -120,7 +121,7 @@ public struct WorkspaceManager: Sendable {
         for id in stored.windowIDs where !windowSet.contains(id) { tree = tree?.removing(id) }
         var preselection = preselections[workspace]
         var usedPreselection = false
-        for id in windows where !stored.windowIDs.contains(id) {
+        for id in windows where !stored.windowIDs.contains(id) && groups.leader(of: id).map({ $0 == id }) ?? true {
             guard let current = tree else {
                 tree = .leaf(id)
                 continue
@@ -160,6 +161,71 @@ public struct WorkspaceManager: Sendable {
         guard !fits(preferred) else { return preferred }
         let largest = frames.filter { fits($0.key) }.max { $0.value.width * $0.value.height < $1.value.width * $1.value.height }
         return largest?.key ?? preferred
+    }
+
+    // MARK: - Tab groups
+
+    public func group(containing id: WindowID) -> [WindowID]? { groups.members(ofGroupContaining: id) }
+    public func activeMember(ofGroupContaining id: WindowID) -> WindowID? { groups.activeMember(ofGroupContaining: id) }
+
+    /// Leaves for the layout: ungrouped windows plus one leader per group.
+    public func layoutLeaves(for windows: [WindowID]) -> [WindowID] {
+        windows.filter { id in groups.leader(of: id).map { $0 == id } ?? true }
+    }
+
+    /// Grouped windows that are not their group's active member.
+    public func hiddenGroupMembers(among windows: [WindowID]) -> Set<WindowID> {
+        Set(windows.filter { groups.leader(of: $0) != nil && groups.activeMember(ofGroupContaining: $0) != $0 })
+    }
+
+    /// Creates a group around a lone window, or dissolves the group the window is in.
+    @discardableResult
+    public mutating func toggleGroup(containing id: WindowID, in workspace: Int) -> Bool {
+        guard isValid(workspace), assignments[id] == workspace else { return false }
+        guard let leader = groups.leader(of: id) else {
+            groups.create(with: id)
+            return true
+        }
+        let members = groups.dissolve(leader)
+        var tree = trees[workspace]
+        for member in members where member != leader {
+            tree = tree?.inserting(member, at: leader, direction: .vertical) ?? .leaf(member)
+        }
+        trees[workspace] = tree
+        return true
+    }
+
+    /// Moves `id` into the group holding `target`, creating it when needed, and shows `id`.
+    @discardableResult
+    public mutating func addToGroup(_ id: WindowID, containing target: WindowID, in workspace: Int) -> Bool {
+        guard isValid(workspace), id != target, assignments[id] == workspace, assignments[target] == workspace, groups.leader(of: id) == nil else { return false }
+        if groups.leader(of: target) == nil { groups.create(with: target) }
+        guard let leader = groups.leader(of: target) else { return false }
+        groups.add(id, to: leader)
+        trees[workspace] = trees[workspace]?.removing(id)
+        return true
+    }
+
+    /// Takes a window out of its group into a tile of its own next to the group.
+    @discardableResult
+    public mutating func leaveGroup(_ id: WindowID, in workspace: Int) -> Bool {
+        guard isValid(workspace), let leader = groups.leader(of: id) else { return false }
+        if let promoted = groups.remove(id) {
+            trees[workspace] = trees[workspace]?.swapped(id, promoted)
+            trees[workspace] = trees[workspace]?.inserting(id, at: promoted, direction: .vertical)
+        } else if leader != id {
+            trees[workspace] = trees[workspace]?.inserting(id, at: leader, direction: .vertical)
+        }
+        return true
+    }
+
+    /// Shows the next or previous member; returns the window to focus.
+    public mutating func cycleGroup(containing id: WindowID, forward: Bool) -> WindowID? {
+        groups.cycle(id, forward: forward)
+    }
+
+    public mutating func showGroupMember(_ id: WindowID) {
+        groups.setActive(id)
     }
 
     public mutating func adjustSplitRatio(containing window: WindowID, by delta: Double, in workspace: Int) -> Bool {
@@ -204,6 +270,9 @@ public struct WorkspaceManager: Sendable {
     }
 
     public mutating func remove(_ windowID: WindowID) {
+        if let workspace = assignments[windowID], let promoted = groups.remove(windowID) {
+            trees[workspace] = trees[workspace]?.swapped(windowID, promoted)
+        }
         assignments.removeValue(forKey: windowID)
         guard let key = windowKeys.removeValue(forKey: windowID), keyOwners[key] == windowID else { return }
         keyOwners.removeValue(forKey: key)

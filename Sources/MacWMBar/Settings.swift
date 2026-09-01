@@ -21,7 +21,7 @@ final class SettingsModel: ObservableObject {
         "move left", "move down", "move up", "move right",
         "resize grow", "resize shrink", "maximize", "toggle-float", "toggle-split", "center", "close",
         "workspace previous", "toggle-terminal", "mode resize", "mode default",
-        "preselect vertical", "preselect horizontal", "layout bsp", "layout stack", "layout monocle", "layout master",
+        "preselect vertical", "preselect horizontal", "group toggle", "group add left", "group add right", "group add up", "group add down", "group remove", "group next", "group prev", "layout bsp", "layout stack", "layout monocle", "layout master",
         "exec open -a Safari", "scratchpad chat"
     ] + (1...9).map { "workspace \($0)" } + (1...9).map { "send-to-workspace \($0)" }
 

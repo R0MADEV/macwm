@@ -2,6 +2,33 @@ public enum Query: String, Equatable, Sendable {
     case state, windows, workspaces
 }
 
+public enum GroupCommand: Equatable, Sendable {
+    case toggle
+    case add(Direction)
+    case leave
+    case cycle(forward: Bool)
+
+    public static func parse(_ arguments: [String]) -> GroupCommand? {
+        switch (arguments.first, arguments.dropFirst().first, arguments.count) {
+        case ("toggle", nil, 1): return .toggle
+        case ("remove", nil, 1): return .leave
+        case ("next", nil, 1): return .cycle(forward: true)
+        case ("prev", nil, 1), ("previous", nil, 1): return .cycle(forward: false)
+        case ("add", let value?, 2): return Direction(rawValue: value).map(GroupCommand.add)
+        default: return nil
+        }
+    }
+
+    public var wireValue: String {
+        switch self {
+        case .toggle: return "toggle"
+        case let .add(direction): return "add \(direction.rawValue)"
+        case .leave: return "remove"
+        case let .cycle(forward): return forward ? "next" : "prev"
+        }
+    }
+}
+
 public enum Command: Equatable, Sendable {
     case status
     /// JSON view of the daemon state for scripts and external bars.
@@ -31,6 +58,8 @@ public enum Command: Equatable, Sendable {
     case toggleSplit
     /// Master layout shape: ratio, master count and orientation.
     case master(MasterCommand)
+    /// Tab groups: toggle, add a neighbor, leave, cycle the visible member.
+    case group(GroupCommand)
     /// Split direction for the next window opened in the active workspace.
     case preselect(SplitDirection)
     /// Run a shell command line through the user's login shell.
@@ -75,6 +104,7 @@ public enum Command: Equatable, Sendable {
             return .scratchpad(value)
         case "toggle-split": return arguments.count == 1 ? .toggleSplit : nil
         case "master": return MasterCommand.parse(Array(arguments.dropFirst())).map(Command.master)
+        case "group": return GroupCommand.parse(Array(arguments.dropFirst())).map(Command.group)
         case "preselect":
             guard arguments.count == 2, let value else { return nil }
             return SplitDirection(rawValue: value).map(Command.preselect)
@@ -116,6 +146,7 @@ public enum Command: Equatable, Sendable {
         case let .cycleFocus(forward): return forward ? "focus next" : "focus prev"
         case .toggleSplit: return "toggle-split"
         case let .master(command): return "master \(command.wireValue)"
+        case let .group(command): return "group \(command.wireValue)"
         case let .preselect(direction): return "preselect \(direction.rawValue)"
         case let .exec(commandLine): return "exec \(commandLine)"
         }

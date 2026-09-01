@@ -137,6 +137,10 @@ public enum HyprlandConfig {
         case "movetoworkspace": return Int(argument).map { "move-to-workspace \($0)" }
         case "movetoworkspacesilent": return Int(argument).map { "send-to-workspace \($0)" }
         case "killactive": return "close"
+        case "togglegroup": return "group toggle"
+        case "moveintogroup": return directions[argument].map { "group add \($0)" }
+        case "moveoutofgroup": return "group remove"
+        case "changegroupactive": return argument == "b" ? "group prev" : "group next"
         case "togglefloating": return "toggle-float"
         case "fullscreen": return "maximize"
         case "togglesplit": return "toggle-split"
