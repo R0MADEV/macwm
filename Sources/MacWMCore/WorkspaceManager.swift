@@ -146,6 +146,12 @@ public struct WorkspaceManager: Sendable {
         return true
     }
 
+    public mutating func resizeTiled(_ window: WindowID, deltaX: Double, deltaY: Double, frame: Frame, in workspace: Int) -> Bool {
+        guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(window) else { return false }
+        trees[workspace] = tree.resizing(window, deltaX: deltaX, deltaY: deltaY, in: frame)
+        return true
+    }
+
     public mutating func toggleSplit(containing window: WindowID, in workspace: Int) -> Bool {
         guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(window) else { return false }
         trees[workspace] = tree.togglingSplit(containing: window)

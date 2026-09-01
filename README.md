@@ -236,7 +236,12 @@ The toggle launches the terminal when it is not running, minimizes its visible w
 
 ### Mouse
 
-Floating windows can be handled with the mouse, like `bindm` in Hyprland: hold `Option` and drag with the left button to move a floating window, or with the right button to resize it from its bottom-right corner. Tiled windows are not affected, so `Option+click` keeps working in applications when the window under the cursor is tiled.
+Windows can be handled with the mouse, like `bindm` in Hyprland, by holding `Option` while dragging:
+
+- left button on a floating window moves it; on a tiled window, dropping it on another tiled window swaps the two;
+- right button on a floating window resizes it from its bottom-right corner; on a tiled window it moves the splits around it, so dragging right makes it wider and dragging down makes it taller.
+
+Windows that macwm does not manage are not affected, so `Option+click` keeps working in them.
 
 ### Focus follows mouse
 

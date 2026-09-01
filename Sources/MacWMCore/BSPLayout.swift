@@ -127,22 +127,64 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
         case let .leaf(window):
             return [window: frame]
         case let .split(direction, ratio, first, second):
-            let boundedRatio = min(max(ratio, 0.1), 0.9)
-            let firstFrame: Frame
-            let secondFrame: Frame
-
-            switch direction {
-            case .horizontal:
-                let firstHeight = frame.height * boundedRatio
-                firstFrame = Frame(x: frame.x, y: frame.y, width: frame.width, height: firstHeight)
-                secondFrame = Frame(x: frame.x, y: frame.y + firstHeight, width: frame.width, height: frame.height - firstHeight)
-            case .vertical:
-                let firstWidth = frame.width * boundedRatio
-                firstFrame = Frame(x: frame.x, y: frame.y, width: firstWidth, height: frame.height)
-                secondFrame = Frame(x: frame.x + firstWidth, y: frame.y, width: frame.width - firstWidth, height: frame.height)
-            }
-
+            let (firstFrame, secondFrame) = Self.childFrames(direction: direction, ratio: ratio, in: frame)
             return first.frames(in: firstFrame).merging(second.frames(in: secondFrame)) { _, new in new }
+        }
+    }
+
+    /// Mouse resize of a tiled window: horizontal drag moves the nearest
+    /// vertical split above the window, vertical drag the nearest horizontal
+    /// one, each by the dragged fraction of that split's frame. Positive deltas
+    /// make the window wider and taller.
+    public func resizing(_ id: WindowID, deltaX: Double, deltaY: Double, in frame: Frame) -> WindowTree {
+        resizingNode(id, deltaX: deltaX, deltaY: deltaY, in: frame).tree
+    }
+
+    private func resizingNode(_ id: WindowID, deltaX: Double, deltaY: Double, in frame: Frame) -> (tree: WindowTree, needsVertical: Bool, needsHorizontal: Bool) {
+        switch self {
+        case let .leaf(window):
+            let isTarget = window == id
+            return (self, isTarget, isTarget)
+        case let .split(direction, ratio, first, second):
+            guard windowIDs.contains(id) else { return (self, false, false) }
+            let (firstFrame, secondFrame) = Self.childFrames(direction: direction, ratio: ratio, in: frame)
+            let isInFirst = first.windowIDs.contains(id)
+            let child = isInFirst
+                ? first.resizingNode(id, deltaX: deltaX, deltaY: deltaY, in: firstFrame)
+                : second.resizingNode(id, deltaX: deltaX, deltaY: deltaY, in: secondFrame)
+            var newRatio = ratio
+            var needsVertical = child.needsVertical
+            var needsHorizontal = child.needsHorizontal
+            let sign: Double = isInFirst ? 1 : -1
+            if direction == .vertical, needsVertical, frame.width > 0 {
+                newRatio += sign * deltaX / frame.width
+                needsVertical = false
+            }
+            if direction == .horizontal, needsHorizontal, frame.height > 0 {
+                newRatio += sign * deltaY / frame.height
+                needsHorizontal = false
+            }
+            let bounded = min(max(newRatio, 0.1), 0.9)
+            let tree = WindowTree.split(direction: direction, ratio: bounded, first: isInFirst ? child.tree : first, second: isInFirst ? second : child.tree)
+            return (tree, needsVertical, needsHorizontal)
+        }
+    }
+
+    private static func childFrames(direction: SplitDirection, ratio: Double, in frame: Frame) -> (Frame, Frame) {
+        let boundedRatio = min(max(ratio, 0.1), 0.9)
+        switch direction {
+        case .horizontal:
+            let firstHeight = frame.height * boundedRatio
+            return (
+                Frame(x: frame.x, y: frame.y, width: frame.width, height: firstHeight),
+                Frame(x: frame.x, y: frame.y + firstHeight, width: frame.width, height: frame.height - firstHeight)
+            )
+        case .vertical:
+            let firstWidth = frame.width * boundedRatio
+            return (
+                Frame(x: frame.x, y: frame.y, width: firstWidth, height: frame.height),
+                Frame(x: frame.x + firstWidth, y: frame.y, width: frame.width - firstWidth, height: frame.height)
+            )
         }
     }
 }

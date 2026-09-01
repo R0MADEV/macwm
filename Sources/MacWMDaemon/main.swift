@@ -139,9 +139,26 @@ guard let hotkeys = HotkeyManager(keybinds: keybinds, handler: { command in
     exit(EXIT_FAILURE)
 }
 
-let mouse = MouseManager(client: client, targets: mouseTargets, onDragEnd: { id, frame in
-    store.updateFrame(frame, for: id)
-})
+let mouse = MouseManager(
+    client: client,
+    targets: mouseTargets,
+    onFloatingDragEnd: { id, frame in
+        store.updateFrame(frame, for: id)
+    },
+    onTiledResize: { id, deltaX, deltaY in
+        guard let layoutFrame = client.layoutFrame() else { return }
+        let activeWorkspace = workspaces.value.activeWorkspace
+        guard workspaces.value.resizeTiled(id, deltaX: deltaX, deltaY: deltaY, frame: layoutFrame, in: activeWorkspace) else { return }
+        applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+    },
+    onTiledSwap: { first, second in
+        let activeWorkspace = workspaces.value.activeWorkspace
+        guard workspaces.value.swap(first, second, in: activeWorkspace) else { return }
+        applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+    }
+)
 if mouse == nil { fputs("macwm: unable to register the mouse tap; Option+drag on floating windows is disabled.\n", stderr) }
 
 let focusFollowsMouse = FocusFollowsMouse(client: client, focus: { id in
@@ -434,22 +451,13 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     layoutGuard.isApplying = true
     defer { layoutGuard.isApplying = false }
     mouseTargets.update(store.windows.filter { window in
-        let isVisibleInActiveWorkspace = !window.isHidden && workspaces.workspace(for: window.id) == workspaces.activeWorkspace
-        return window.isFloating && isVisibleInActiveWorkspace
+        !window.isHidden && workspaces.workspace(for: window.id) == workspaces.activeWorkspace
     })
     guard config.autoTile || force else { return }
-    guard let screen = NSScreen.screens.first else { return }
-    let visibleFrame = screen.visibleFrame
-    let screenFrame = screen.frame
+    guard let layoutFrame = client.layoutFrame() else { return }
     let tileableWindows = store.windows.filter {
         $0.isTileable && $0.frame != nil && maximizedFrames[$0.id] == nil && workspaces.workspace(for: $0.id) == workspaces.activeWorkspace
     }
-    let layoutFrame = Frame(
-        x: visibleFrame.origin.x,
-        y: visibleFrame.origin.y,
-        width: visibleFrame.width,
-        height: visibleFrame.height
-    )
     let windowIDs = tileableWindows.map(\.id)
     let layout = workspaces.layout(for: workspaces.activeWorkspace, default: config.layout)
     let frames: [WindowID: Frame]
@@ -467,14 +475,8 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
             continue
         }
         guard let frame = frames[window.id] else { continue }
-        let accessibilityFrame = Frame(
-            x: frame.x,
-            y: screenFrame.maxY - frame.y - frame.height,
-            width: frame.width,
-            height: frame.height
-        )
-        guard client.setFrame(accessibilityFrame, for: window) else { continue }
-        store.updateFrame(accessibilityFrame, for: window.id)
+        guard client.setFrame(frame, for: window) else { continue }
+        store.updateFrame(frame, for: window.id)
         appliedCount += 1
     }
     print("macwm: applied \(layout.rawValue) to \(appliedCount)/\(tileableWindows.count) windows")

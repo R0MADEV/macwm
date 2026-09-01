@@ -81,3 +81,15 @@ private func leaf(_ id: UInt64) -> WindowTree { .leaf(WindowID(id)) }
     #expect(tree.adjustingRatio(for: WindowID(1), by: 0.2) == v(0.9, leaf(1), leaf(2)))
     #expect(tree.adjustingRatio(for: WindowID(2), by: 0.9) == v(0.1, leaf(1), leaf(2)))
 }
+
+@Test func mouseResizeAdjustsTheNearestSplitOfEachAxis() {
+    let tree = v(0.5, leaf(1), h(0.5, leaf(2), leaf(3)))
+    let frame = Frame(x: 0, y: 0, width: 1000, height: 600)
+
+    // Window 3 sits in the right half and at the bottom: dragging right shrinks
+    // the left column, dragging up makes it shorter.
+    #expect(tree.resizing(WindowID(3), deltaX: 100, deltaY: -60, in: frame) == v(0.4, leaf(1), h(0.6, leaf(2), leaf(3))))
+    // Window 1 has no horizontal split above it, so the vertical delta is ignored.
+    #expect(tree.resizing(WindowID(1), deltaX: 100, deltaY: 100, in: frame) == v(0.6, leaf(1), h(0.5, leaf(2), leaf(3))))
+    #expect(tree.resizing(WindowID(99), deltaX: 100, deltaY: 100, in: frame) == tree)
+}

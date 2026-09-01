@@ -200,6 +200,13 @@ final class AXClient {
         return accessibilityFrame(for: screen.visibleFrame)
     }
 
+    /// Visible area of the primary screen in Accessibility coordinates, the
+    /// frame every layout is computed in.
+    func layoutFrame() -> Frame? {
+        guard let screen = NSScreen.screens.first else { return nil }
+        return accessibilityFrame(for: screen.visibleFrame)
+    }
+
     /// Full frame of the screen holding the window, in Accessibility coordinates.
     func screenFrame(for window: ManagedWindow) -> Frame? {
         guard let currentFrame = window.frame, let screen = screen(for: currentFrame) else { return nil }
