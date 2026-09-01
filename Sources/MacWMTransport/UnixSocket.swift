@@ -62,7 +62,12 @@ public final class UnixSocketServer: @unchecked Sendable {
         let arguments = input.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").map(String.init)
         let response = Command.parse(arguments).map(handler) ?? "error: invalid command"
         let output = Array((response + "\n").utf8)
-        _ = output.withUnsafeBytes { write(client, $0.baseAddress, output.count) }
+        var offset = 0
+        while offset < output.count {
+            let written = output[offset...].withUnsafeBytes { write(client, $0.baseAddress, $0.count) }
+            guard written > 0 else { break }
+            offset += written
+        }
         close(client)
     }
 }
@@ -91,10 +96,16 @@ public struct UnixSocketClient: Sendable {
         let input = Array((command.wireValue + "\n").utf8)
         guard input.withUnsafeBytes({ write(descriptor, $0.baseAddress, input.count) }) == input.count else { return nil }
 
+        // Responses such as query state exceed one buffer; read until the daemon closes.
+        var response: [UInt8] = []
         var buffer = [UInt8](repeating: 0, count: 4096)
-        let count = read(descriptor, &buffer, buffer.count)
-        guard count > 0 else { return nil }
-        return String(decoding: buffer[..<count], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        while true {
+            let count = read(descriptor, &buffer, buffer.count)
+            guard count > 0 else { break }
+            response.append(contentsOf: buffer[..<count])
+        }
+        guard !response.isEmpty else { return nil }
+        return String(decoding: response, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
