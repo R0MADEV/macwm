@@ -48,6 +48,15 @@ public struct Config: Equatable, Sendable {
         Set(scratchpads.values).union([terminalBundleIdentifier])
     }
 
+    /// `"none"` removes a default hotkey instead of rebinding it.
+    private mutating func setLegacyHotkey(_ name: String, _ binding: String) {
+        if binding == "none" {
+            hotkeys.removeValue(forKey: name)
+        } else {
+            hotkeys[name] = binding
+        }
+    }
+
     public static func parse(_ text: String) -> Config? {
         var config = Config()
         var section = ""
@@ -77,7 +86,7 @@ public struct Config: Equatable, Sendable {
 
             if section == "keys", key.hasPrefix("workspace_") {
                 guard let workspace = Int(key.dropFirst("workspace_".count)), (1...9).contains(workspace), !value.isEmpty else { return nil }
-                config.hotkeys[key] = unquoted(value)
+                config.setLegacyHotkey(key, unquoted(value))
                 continue
             }
 
@@ -164,7 +173,7 @@ public struct Config: Equatable, Sendable {
                  "keys.move_left", "keys.move_down", "keys.move_up", "keys.move_right",
                  "keys.toggle_float", "keys.maximize", "keys.resize", "keys.terminal_toggle":
                 guard !value.isEmpty else { return nil }
-                config.hotkeys[key] = unquoted(value)
+                config.setLegacyHotkey(key, unquoted(value))
             case "workspaces.count":
                 guard let count = Int(value), count > 0 else { return nil }
             case "display.outer_gap":

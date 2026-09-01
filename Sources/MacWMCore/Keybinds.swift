@@ -48,6 +48,13 @@ public struct KeyBinding: Hashable, Sendable {
         return (modifiers, keyName)
     }
 
+    /// Text form with modifiers in a fixed order, e.g. "alt+shift+h".
+    public var text: String {
+        let order: [Modifier] = [.ctrl, .alt, .shift, .cmd]
+        let names = order.filter { modifiers.contains($0) }.map(\.rawValue)
+        return (names + [KeyCodes.name(for: keyCode) ?? "key\(keyCode)"]).joined(separator: "+")
+    }
+
     public func adding(_ modifier: Modifier) -> KeyBinding {
         KeyBinding(keyCode: keyCode, modifiers: modifiers.union([modifier]))
     }
@@ -82,6 +89,11 @@ public struct KeyCodeTable: Equatable, Sendable {
 /// ANSI (US) virtual key codes, the values CGEvent reports for each physical key.
 public enum KeyCodes {
     public static func code(for name: String) -> Int64? { table[name] }
+
+    /// Canonical name for a key code, preferring the shortest of the aliases.
+    public static func name(for code: Int64) -> String? {
+        table.filter { $0.value == code }.map(\.key).min { ($0.count, $0) < ($1.count, $1) }
+    }
 
     /// Symbol names and the character they stand for on the US layout.
     static let symbolNames: [String: String] = [
