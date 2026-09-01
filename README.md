@@ -228,7 +228,7 @@ width = 800
 height = 600
 ```
 
-Reload a valid configuration without restarting the daemon:
+Saving the configuration file applies it automatically, like Hyprland; an invalid file is reported in `/tmp/macwm-daemon.log` and the previous configuration stays in force. You can also reload by hand:
 
 ```bash
 macwm reload

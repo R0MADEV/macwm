@@ -147,6 +147,12 @@ let observerRegistry = AXObserverRegistry { processID, event in
         }
 }
 observerRegistry.start()
+
+let configWatcher = ConfigWatcher(directory: NSString(string: "~/.config/macwm").expandingTildeInPath) {
+    let result = execute(.reload, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: runtimeConfiguration, workspaces: workspaces)
+    print("macwm: configuration changed on disk; reload: \(result)")
+}
+configWatcher.start()
 for name in runtimeConfiguration.value.autostart.keys.sorted() {
     guard let commandLine = runtimeConfiguration.value.autostart[name] else { continue }
     print("macwm: autostart \(name): \(commandLine)")
