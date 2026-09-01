@@ -10,7 +10,7 @@ public extension BarPosition {
     var thickness: Double {
         switch self {
         case .top, .bottom: return 34
-        case .left, .right: return 110
+        case .left, .right: return 48
         }
     }
 

@@ -42,8 +42,8 @@ import Testing
 
     // A 34-point top bar overlaps a 38-point menu bar entirely: nothing to reserve.
     #expect(visible.reserving(bar: .top, screen: screen) == visible)
-    #expect(visible.reserving(bar: .left, screen: screen) == Frame(x: 110, y: 38, width: 1890, height: 1262))
-    #expect(visible.reserving(bar: .right, screen: screen) == Frame(x: 0, y: 38, width: 1890, height: 1262))
+    #expect(visible.reserving(bar: .left, screen: screen) == Frame(x: 48, y: 38, width: 1952, height: 1262))
+    #expect(visible.reserving(bar: .right, screen: screen) == Frame(x: 0, y: 38, width: 1952, height: 1262))
     #expect(visible.reserving(bar: .bottom, screen: screen) == Frame(x: 0, y: 38, width: 2000, height: 1228))
     // A 24-point menu bar leaves 10 points of the top bar inside the visible area.
     #expect(Frame(x: 0, y: 24, width: 2000, height: 1276).reserving(bar: .top, screen: screen) == Frame(x: 0, y: 34, width: 2000, height: 1266))

@@ -121,7 +121,7 @@ final class BarController: NSObject {
             button.layer?.cornerRadius = 3
             button.translatesAutoresizingMaskIntoConstraints = false
             if isVertical {
-                button.widthAnchor.constraint(equalToConstant: 25).isActive = true
+                button.widthAnchor.constraint(equalToConstant: 40).isActive = true
                 button.heightAnchor.constraint(equalToConstant: 22).isActive = true
             } else {
                 button.widthAnchor.constraint(equalToConstant: 22).isActive = true
@@ -151,6 +151,8 @@ final class BarController: NSObject {
             let label = NSTextField(labelWithString: "--")
             label.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
             label.textColor = NSColor(calibratedWhite: 0.62, alpha: 1)
+            label.alignment = .center
+            label.maximumNumberOfLines = isVertical ? 2 : 1
             metricStack.addArrangedSubview(imageView)
             metricStack.addArrangedSubview(label)
             statusStack.addArrangedSubview(metricStack)
@@ -263,7 +265,8 @@ final class BarController: NSObject {
             let output = network.output >= previousNetworkBytes.output
                 ? network.output - previousNetworkBytes.output
                 : 0
-            networkRate = "↓\(Self.rate(input)) ↑\(Self.rate(output))"
+            // The vertical bar is narrow: one direction per line.
+            networkRate = "↓\(Self.rate(input))\(position.isVertical ? "\n" : " ")↑\(Self.rate(output))"
         } else {
             networkRate = "--"
         }
@@ -286,7 +289,8 @@ final class BarController: NSObject {
         for case let button as NSButton in workspaceStack.arrangedSubviews {
             let isActive = button.tag == activeWorkspace
             let count = workspaceWindowCounts[button.tag] ?? 0
-            button.title = count == 0 ? "\(button.tag)" : "\(button.tag) (\(count))"
+            let compactCount = position.isVertical ? "\(button.tag)·\(count)" : "\(button.tag) (\(count))"
+            button.title = count == 0 ? "\(button.tag)" : compactCount
             button.state = isActive ? .on : .off
             button.contentTintColor = isActive
                 ? NSColor(calibratedWhite: 0.98, alpha: 1)
