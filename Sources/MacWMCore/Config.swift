@@ -9,8 +9,10 @@ public struct Config: Equatable, Sendable {
     public var autoTile: Bool
     public var rules: [WindowRule]
     public var hotkeys: [String: String]
+    /// Mode name to binding text to command text, from `[binds]` and `[binds.<mode>]`.
+    public var binds: [String: [String: String]]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
@@ -19,6 +21,7 @@ public struct Config: Equatable, Sendable {
         self.autoTile = autoTile
         self.rules = rules
         self.hotkeys = hotkeys
+        self.binds = binds
     }
 
     public static let defaultHotkeys: [String: String] = [
@@ -59,6 +62,16 @@ public struct Config: Equatable, Sendable {
             if section == "keys", key.hasPrefix("workspace_") {
                 guard let workspace = Int(key.dropFirst("workspace_".count)), (1...9).contains(workspace), !value.isEmpty else { return nil }
                 config.hotkeys[key] = unquoted(value)
+                continue
+            }
+
+            let isBindsSection = section == "binds" || section.hasPrefix("binds.")
+            if isBindsSection {
+                let mode = section == "binds" ? KeybindEngine.defaultMode : String(section.dropFirst("binds.".count))
+                let bindingText = unquoted(key)
+                let commandText = unquoted(value)
+                guard !mode.isEmpty, KeyBinding.parse(bindingText) != nil, Command.parse(commandText) != nil else { return nil }
+                config.binds[mode, default: [:]][bindingText] = commandText
                 continue
             }
 

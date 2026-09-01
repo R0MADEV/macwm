@@ -1,28 +1,19 @@
+import AppKit
 import CoreGraphics
-import Foundation
 import MacWMCore
 
+/// Global keyboard tap that feeds every key press to the keybind engine and
+/// dispatches the resolved commands to the main thread.
 final class HotkeyManager: @unchecked Sendable {
-    enum Action: Sendable {
-        case focus(Direction)
-        case move(Direction)
-        case resize(ResizeOperation)
-        case maximize
-        case toggleFloat
-        case toggleTerminal
-        case workspace(Int)
-        case sendToWorkspace(Int)
-    }
-
     private var eventTap: CFMachPort? = nil
     private var runLoopSource: CFRunLoopSource? = nil
     private var tapRunLoop: CFRunLoop? = nil
-    private let handler: (Action) -> Void
-    private let runtimeConfiguration: DaemonConfiguration
+    private let handler: (Command) -> Void
+    private let keybinds: DaemonKeybinds
 
-    init?(runtimeConfiguration: DaemonConfiguration, handler: @escaping (Action) -> Void) {
+    init?(keybinds: DaemonKeybinds, handler: @escaping (Command) -> Void) {
         self.handler = handler
-        self.runtimeConfiguration = runtimeConfiguration
+        self.keybinds = keybinds
         let keyDownMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
         let context = Unmanaged.passUnretained(self).toOpaque()
         guard let eventTap = CGEvent.tapCreate(
@@ -65,11 +56,18 @@ final class HotkeyManager: @unchecked Sendable {
     }
 
     fileprivate func handle(_ event: CGEvent) -> Unmanaged<CGEvent>? {
-        guard let action = Self.action(for: event, config: runtimeConfiguration.value) else { return Unmanaged.passUnretained(event) }
-        DispatchQueue.main.async { [weak self] in
-            self?.handler(action)
+        let press = KeyBinding(keyCode: event.getIntegerValueField(.keyboardEventKeycode), modifiers: Self.modifiers(of: event.flags))
+        switch keybinds.handle(press) {
+        case .unbound:
+            return Unmanaged.passUnretained(event)
+        case .consumed:
+            return nil
+        case let .command(command):
+            DispatchQueue.main.async { [weak self] in
+                self?.handler(command)
+            }
+            return nil
         }
-        return nil
     }
 
     fileprivate func enable() {
@@ -77,36 +75,13 @@ final class HotkeyManager: @unchecked Sendable {
         CGEvent.tapEnable(tap: eventTap, enable: true)
     }
 
-    fileprivate static func action(for event: CGEvent, config: Config) -> Action? {
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        let candidates: [(String, Action)] = [
-            ("focus_left", .focus(.left)), ("focus_down", .focus(.down)), ("focus_up", .focus(.up)), ("focus_right", .focus(.right)),
-            ("move_left", .move(.left)), ("move_down", .move(.down)), ("move_up", .move(.up)), ("move_right", .move(.right)),
-            ("resize", .resize(event.flags.contains(.maskShift) ? .shrink : .grow)),
-            ("maximize", .maximize), ("toggle_float", .toggleFloat), ("terminal_toggle", .toggleTerminal)
-        ]
-        for (name, action) in candidates where matches(config.hotkeys[name], event: event, keyCode: keyCode) { return action }
-        for workspace in 1...9 {
-            let binding = config.hotkeys["workspace_\(workspace)"] ?? "alt+\(workspace)"
-            let matchesBinding = matches(binding, event: event, keyCode: keyCode)
-                || matches("shift+\(binding)", event: event, keyCode: keyCode)
-            if matchesBinding { return event.flags.contains(.maskShift) ? .sendToWorkspace(workspace) : .workspace(workspace) }
-        }
-        return nil
-    }
-
-    private static func matches(_ binding: String?, event: CGEvent, keyCode eventKeyCode: Int64) -> Bool {
-        guard let binding else { return false }
-        let parts = binding.lowercased().split(separator: "+").map(String.init)
-        guard let key = parts.last, keyCode(for: key) == eventKeyCode else { return false }
-        let modifiers = Set(parts.dropLast())
-        return modifiers.contains("shift") == event.flags.contains(.maskShift)
-            && modifiers.contains("alt") == event.flags.contains(.maskAlternate)
-            && modifiers.contains("ctrl") == event.flags.contains(.maskControl)
-    }
-
-    private static func keyCode(for key: String) -> Int64? {
-        ["f": 3, "h": 4, "j": 38, "k": 40, "l": 37, "r": 15, "m": 46, "grave": 50, "1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28, "9": 25][key]
+    private static func modifiers(of flags: CGEventFlags) -> Set<Modifier> {
+        var modifiers: Set<Modifier> = []
+        if flags.contains(.maskShift) { modifiers.insert(.shift) }
+        if flags.contains(.maskControl) { modifiers.insert(.ctrl) }
+        if flags.contains(.maskAlternate) { modifiers.insert(.alt) }
+        if flags.contains(.maskCommand) { modifiers.insert(.cmd) }
+        return modifiers
     }
 }
 

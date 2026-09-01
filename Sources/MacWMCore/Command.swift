@@ -10,6 +10,13 @@ public enum Command: Equatable, Sendable {
     case maximize
     case toggleFloat
     case toggleTerminal
+    /// Switches the hotkey engine to a named mode; "default" leaves any mode.
+    case mode(String)
+
+    /// Parses a command written as one string, e.g. "workspace 2".
+    public static func parse(_ text: String) -> Command? {
+        parse(text.split(separator: " ").map(String.init))
+    }
 
     public static func parse(_ arguments: [String]) -> Command? {
         guard let name = arguments.first else { return nil }
@@ -30,6 +37,9 @@ public enum Command: Equatable, Sendable {
         case "maximize": return arguments.count == 1 ? .maximize : nil
         case "toggle-float": return arguments.count == 1 ? .toggleFloat : nil
         case "toggle-terminal": return arguments.count == 1 ? .toggleTerminal : nil
+        case "mode":
+            guard arguments.count == 2, let value, !value.isEmpty else { return nil }
+            return .mode(value)
         default: return nil
         }
     }
@@ -47,6 +57,7 @@ public enum Command: Equatable, Sendable {
         case .maximize: return "maximize"
         case .toggleFloat: return "toggle-float"
         case .toggleTerminal: return "toggle-terminal"
+        case let .mode(name): return "mode \(name)"
         }
     }
 }

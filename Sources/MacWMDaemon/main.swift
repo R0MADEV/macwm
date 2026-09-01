@@ -14,6 +14,7 @@ guard AXIsProcessTrustedWithOptions(permissionOptions) else {
 }
 
 let runtimeConfiguration = DaemonConfiguration(ConfigLoader.load())
+let keybinds = DaemonKeybinds(runtimeConfiguration.value.keybindEngine())
 let client = AXClient(rules: runtimeConfiguration.value.rules)
 let terminalController = TerminalController(client: client, bundleIdentifier: runtimeConfiguration.value.terminalBundleIdentifier)
 let workspacePersistence = WorkspacePersistence()
@@ -125,8 +126,8 @@ let observerRegistry = AXObserverRegistry { processID, event in
 }
 observerRegistry.start()
 
-guard let hotkeys = HotkeyManager(runtimeConfiguration: runtimeConfiguration, handler: { action in
-    handle(action, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: runtimeConfiguration, workspaces: workspaces)
+guard let hotkeys = HotkeyManager(keybinds: keybinds, handler: { command in
+    _ = execute(command, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: runtimeConfiguration, workspaces: workspaces)
 }) else {
     fputs("macwm: unable to register global hotkeys. Enable Input Monitoring for macwm-daemon.\n", stderr)
     exit(EXIT_FAILURE)
@@ -143,27 +144,6 @@ RunLoop.main.run()
 
 withExtendedLifetime((hotkeys, server, observerRegistry)) {}
 
-private func handle(_ action: HotkeyManager.Action, client: AXClient, store: inout WindowStore, maximizedFrames: inout [WindowID: Frame], configuration: DaemonConfiguration, workspaces: DaemonWorkspaces) {
-    switch action {
-    case let .focus(direction):
-        _ = execute(.focus(direction), client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
-    case let .move(direction):
-        _ = execute(.move(direction), client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
-    case let .resize(operation):
-        _ = execute(.resize(operation), client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
-    case let .workspace(workspace):
-        _ = execute(.workspace(workspace), client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
-    case let .sendToWorkspace(workspace):
-        _ = execute(.sendToWorkspace(workspace), client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
-    case .maximize:
-        _ = execute(.maximize, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
-    case .toggleFloat:
-        _ = execute(.toggleFloat, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
-    case .toggleTerminal:
-        terminalController.toggle()
-    }
-}
-
 private func execute(_ command: Command, client: AXClient, store: inout WindowStore, maximizedFrames: inout [WindowID: Frame], configuration: DaemonConfiguration, workspaces: DaemonWorkspaces) -> String {
     syncFocusedWindow(client: client, store: &store)
     if let focusedID = store.focusedWindow?.id { workspaces.value.recordFocus(focusedID) }
@@ -172,11 +152,12 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     case .status:
         let focused = store.focusedWindow.map { "\($0.appName) - \($0.title)" } ?? "none"
         let layout = workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.layout).rawValue
-        return "workspace: \(workspaces.value.activeWorkspace)\nlayout: \(layout)\nwindows: \(store.windows.count)\nfocused: \(focused)"
+        return "workspace: \(workspaces.value.activeWorkspace)\nlayout: \(layout)\nmode: \(keybinds.mode)\nwindows: \(store.windows.count)\nfocused: \(focused)"
     case .reload:
         guard let updatedConfiguration = ConfigLoader.loadValidated() else { return "error: invalid configuration" }
         configuration.value = updatedConfiguration
         terminalController.update(bundleIdentifier: updatedConfiguration.terminalBundleIdentifier)
+        keybinds.replace(updatedConfiguration.keybindEngine())
         client.updateRules(configuration.value.rules)
         for window in managedWindows(client) {
             store.upsert(window)
@@ -249,6 +230,9 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         return "ok"
     case .toggleTerminal:
         terminalController.toggle()
+        return "ok"
+    case let .mode(name):
+        keybinds.enter(mode: name)
         return "ok"
     }
 }

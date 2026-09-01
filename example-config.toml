@@ -29,6 +29,16 @@ toggle_float = "alt+f"
 maximize = "alt+m"
 terminal_toggle = "grave"
 
+# Free-form bindings: any key to any CLI command. These override [keys].
+[binds]
+"alt+r" = "mode resize"
+
+# A mode is a Hyprland-style submap: only its bindings apply while active.
+[binds.resize]
+"h" = "resize shrink"
+"l" = "resize grow"
+"escape" = "mode default"
+
 [workspaces]
 count = 9
 

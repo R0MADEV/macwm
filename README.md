@@ -221,21 +221,28 @@ Valid positions are `top`, `bottom`, `left` and `right`.
 
 ### Custom Hotkeys
 
-All supported hotkeys can be changed without recompiling:
+Bind any key to any command under `[binds]`. A binding is a `+` separated list of modifiers and one key; the command is what you would pass to the `macwm` CLI:
 
 ```toml
-[keys]
-terminal_toggle = "ctrl+grave"
-workspace_1 = "alt+1"
-workspace_2 = "alt+2"
-workspace_3 = "alt+3"
-workspace_4 = "alt+4"
-workspace_5 = "alt+5"
-workspace_6 = "alt+6"
-workspace_7 = "alt+7"
-workspace_8 = "alt+8"
-workspace_9 = "alt+9"
+[binds]
+"alt+h" = "focus left"
+"alt+shift+h" = "move left"
+"cmd+return" = "toggle-terminal"
+"alt+1" = "workspace 1"
+"alt+shift+1" = "send-to-workspace 1"
+"alt+r" = "mode resize"
+
+[binds.resize]
+"h" = "resize shrink"
+"l" = "resize grow"
+"escape" = "mode default"
 ```
+
+`[binds.<name>]` defines a mode, the equivalent of a Hyprland submap: while a mode is active only its bindings apply, and `mode default` leaves it. Keys that are not bound in the active mode reach the focused application as usual. The current mode is reported by `macwm status` and can also be set with `macwm mode <name>`.
+
+Modifiers are `shift`, `ctrl` (or `control`), `alt` (or `option`) and `cmd` (or `command`, `super`). Keys are letters, digits, `f1` to `f15`, `return`, `tab`, `space`, `escape`, `delete`, `grave`, `minus`, `equal`, `leftbracket`, `rightbracket`, `semicolon`, `quote`, `comma`, `period`, `slash`, `backslash`, the arrows `left`, `right`, `up`, `down`, and `home`, `end`, `pageup`, `pagedown`, `forwarddelete`. Key names follow the US layout positions.
+
+The older `[keys]` names such as `focus_left`, `resize`, `terminal_toggle` and `workspace_1` keep working; `[binds]` entries override them when they use the same key.
 
 Apply changes without restarting the daemon:
 
