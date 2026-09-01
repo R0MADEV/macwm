@@ -4,6 +4,19 @@ import Testing
 @Test func defaultsMaximizeHotkeyToAltM() {
     #expect(Config().hotkeys["maximize"] == "alt+m")
     #expect(Config().hotkeys["toggle_float"] == "alt+f")
+    #expect(Config().hotkeys["terminal_toggle"] == "grave")
+}
+
+@Test
+func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
+    let config = Config.parse("""
+    [terminal]
+    bundle_id = "com.mitchellh.ghostty"
+    """)
+    #expect(config?.terminalBundleIdentifier == "com.mitchellh.ghostty")
+    #expect(Config().terminalBundleIdentifier == "com.googlecode.iterm2")
+    #expect(Config.parse("[terminal]\nbundle_id = \"\"") == nil)
+    #expect(Config.parse("[terminal]\nbundle_id = \"not valid\"") == nil)
 }
 
 @Test func parsesLayoutGapsAndAutoTile() {
@@ -48,4 +61,8 @@ import Testing
 
     #expect(config?.hotkeys["focus_left"] == "ctrl+h")
     #expect(config?.rules == [WindowRule(bundleIdentifier: "com.example.App", float: true, workspace: 3, center: true, width: 800, height: 600)])
+}
+
+@Test func parsesTerminalToggleHotkey() {
+    #expect(Config.parse("[keys]\nterminal_toggle = \"ctrl+grave\"")?.hotkeys["terminal_toggle"] == "ctrl+grave")
 }

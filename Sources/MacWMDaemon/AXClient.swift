@@ -151,6 +151,23 @@ final class AXClient {
         return AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, value) == .success
     }
 
+    func isMinimized(_ window: ManagedWindow) -> Bool {
+        guard let element = element(for: window) else { return false }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXMinimizedAttribute as CFString, &value) == .success else { return false }
+        return (value as? NSNumber)?.boolValue ?? false
+    }
+
+    func maximizedFrame(for window: ManagedWindow) -> Frame? {
+        guard let currentFrame = window.frame, let screen = screen(for: currentFrame) else { return nil }
+        return accessibilityFrame(for: screen.visibleFrame)
+    }
+
+    func terminalFrame(for window: ManagedWindow) -> Frame? {
+        guard let currentFrame = window.frame, let screen = screen(for: currentFrame) else { return nil }
+        return accessibilityFrame(for: screen.frame)
+    }
+
     private func snapshot(for element: AXUIElement, processID: pid_t, appName: String, bundleIdentifier: String) -> ManagedWindow? {
         let title: String = value(for: element, attribute: kAXTitleAttribute) ?? appName
         let subrole: String = value(for: element, attribute: kAXSubroleAttribute) ?? ""
@@ -194,6 +211,26 @@ final class AXClient {
             return abs(bounds.origin.x - frame.x) < 1 && abs(bounds.origin.y - frame.y) < 1 &&
                 abs(bounds.width - frame.width) < 1 && abs(bounds.height - frame.height) < 1
         }?[kCGWindowNumber as String] as? UInt32
+    }
+
+    private func screen(for windowFrame: Frame) -> NSScreen? {
+        let center = CGPoint(x: windowFrame.x + windowFrame.width / 2, y: windowFrame.y + windowFrame.height / 2)
+        return NSScreen.screens.first { screen in
+            let frame = accessibilityFrame(for: screen.frame)
+            return CGRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height).contains(center)
+        } ?? NSScreen.screens.first
+    }
+
+    /// Converts an AppKit rect (origin at the bottom-left of the primary screen)
+    /// into Accessibility coordinates (origin at its top-left).
+    private func accessibilityFrame(for appKitRect: CGRect) -> Frame {
+        let accessibilityOriginY = NSScreen.screens.first?.frame.maxY ?? appKitRect.maxY
+        return Frame(
+            x: appKitRect.origin.x,
+            y: accessibilityOriginY - appKitRect.origin.y - appKitRect.height,
+            width: appKitRect.width,
+            height: appKitRect.height
+        )
     }
 
     private func value<T>(for element: AXUIElement, attribute: String) -> T? {

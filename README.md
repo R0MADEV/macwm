@@ -49,6 +49,7 @@ macwm layout master
 macwm reload
 macwm toggle-float
 macwm maximize
+macwm toggle-terminal
 ```
 
 The daemon applies the configured layout to the primary display when it starts and when Accessibility reports a new window. Default gaps are `8` points. `Option+R` grows the focused window and `Option+Shift+R` shrinks it. `Option+M` toggles maximize and restore.
@@ -134,3 +135,60 @@ macwm reload
 ## Configuration
 
 Copy `example-config.toml` to `~/.config/macwm/config.toml`, edit it, then run `macwm reload`.
+
+### Terminal
+
+The global terminal toggle works with any installed terminal application. Configure its bundle identifier:
+
+```toml
+[terminal]
+bundle_id = "com.googlecode.iterm2"
+```
+
+Available examples:
+
+```text
+Terminal.app  com.apple.Terminal
+iTerm2        com.googlecode.iterm2
+Ghostty       com.mitchellh.ghostty
+Alacritty     org.alacritty
+```
+
+`terminal_toggle` defaults to `grave` (the backtick key) and is registered globally without modifiers. Change it under `[keys]`, for example `terminal_toggle = "ctrl+grave"`, or run `macwm toggle-terminal`.
+
+The toggle launches the terminal when it is not running, minimizes its visible window, and restores, activates and resizes a minimized or hidden window to cover the whole current screen. The terminal is excluded from workspace assignments, hiding and tiling, so macwm never moves or hides it during workspace changes. macOS provides no public API to keep another application's window always on top or visible on every Space; this limitation cannot be removed without private APIs.
+
+### Navbar
+
+The native macwm navbar can be placed at any screen edge:
+
+```toml
+[bar]
+position = "bottom"
+```
+
+Valid positions are `top`, `bottom`, `left` and `right`.
+
+### Custom Hotkeys
+
+All supported hotkeys can be changed without recompiling:
+
+```toml
+[keys]
+terminal_toggle = "ctrl+grave"
+workspace_1 = "alt+1"
+workspace_2 = "alt+2"
+workspace_3 = "alt+3"
+workspace_4 = "alt+4"
+workspace_5 = "alt+5"
+workspace_6 = "alt+6"
+workspace_7 = "alt+7"
+workspace_8 = "alt+8"
+workspace_9 = "alt+9"
+```
+
+Apply changes without restarting the daemon:
+
+```bash
+macwm reload
+```

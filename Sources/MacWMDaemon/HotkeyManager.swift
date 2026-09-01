@@ -9,6 +9,7 @@ final class HotkeyManager: @unchecked Sendable {
         case resize(ResizeOperation)
         case maximize
         case toggleFloat
+        case toggleTerminal
         case workspace(Int)
         case sendToWorkspace(Int)
     }
@@ -66,7 +67,7 @@ final class HotkeyManager: @unchecked Sendable {
             ("focus_left", .focus(.left)), ("focus_down", .focus(.down)), ("focus_up", .focus(.up)), ("focus_right", .focus(.right)),
             ("move_left", .move(.left)), ("move_down", .move(.down)), ("move_up", .move(.up)), ("move_right", .move(.right)),
             ("resize", .resize(event.flags.contains(.maskShift) ? .shrink : .grow)),
-            ("maximize", .maximize), ("toggle_float", .toggleFloat)
+            ("maximize", .maximize), ("toggle_float", .toggleFloat), ("terminal_toggle", .toggleTerminal)
         ]
         for (name, action) in candidates where matches(config.hotkeys[name], event: event, keyCode: keyCode) { return action }
         for workspace in 1...9 {
@@ -89,7 +90,7 @@ final class HotkeyManager: @unchecked Sendable {
     }
 
     private static func keyCode(for key: String) -> Int64? {
-        ["f": 3, "h": 4, "j": 38, "k": 40, "l": 37, "r": 15, "m": 46, "1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28, "9": 25][key]
+        ["f": 3, "h": 4, "j": 38, "k": 40, "l": 37, "r": 15, "m": 46, "grave": 50, "1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28, "9": 25][key]
     }
 }
 

@@ -11,6 +11,8 @@ import Testing
     #expect(Command.maximize.wireValue == "maximize")
     #expect(Command.parse(["toggle-float"]) == .toggleFloat)
     #expect(Command.toggleFloat.wireValue == "toggle-float")
+    #expect(Command.parse(["toggle-terminal"]) == .toggleTerminal)
+    #expect(Command.toggleTerminal.wireValue == "toggle-terminal")
 }
 
 @Test func rejectsIncompleteCommands() {

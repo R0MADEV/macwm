@@ -8,6 +8,14 @@ focus_follows_mouse = false
 # Position of macwm-bar: top, bottom, left, or right.
 position = "top"
 
+[terminal]
+# Bundle identifier of the terminal launched by the global toggle.
+# Terminal.app: com.apple.Terminal
+# iTerm2: com.googlecode.iterm2
+# Ghostty: com.mitchellh.ghostty
+# Alacritty: org.alacritty
+bundle_id = "com.googlecode.iterm2"
+
 [keys]
 focus_left = "alt+h"
 focus_down = "alt+j"
@@ -19,6 +27,7 @@ move_up = "alt+shift+k"
 move_right = "alt+shift+l"
 toggle_float = "alt+f"
 maximize = "alt+m"
+terminal_toggle = "grave"
 
 [workspaces]
 count = 9

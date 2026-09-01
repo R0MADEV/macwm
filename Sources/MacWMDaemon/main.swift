@@ -15,6 +15,7 @@ guard AXIsProcessTrustedWithOptions(permissionOptions) else {
 
 let runtimeConfiguration = DaemonConfiguration(ConfigLoader.load())
 let client = AXClient(rules: runtimeConfiguration.value.rules)
+let terminalController = TerminalController(client: client, bundleIdentifier: runtimeConfiguration.value.terminalBundleIdentifier)
 let workspacePersistence = WorkspacePersistence()
 let persistedState = workspacePersistence.loadState()
 let workspaces = DaemonWorkspaces(assignments: persistedState.assignments, activeWorkspace: persistedState.activeWorkspace, trees: persistedState.trees ?? [:], layouts: persistedState.layouts ?? [:])
@@ -24,14 +25,14 @@ var maximizedFrames: [WindowID: Frame] = [:]
 let socketPath = "/tmp/macwm.sock"
 let stateNotification = Notification.Name("com.macwm.stateChanged")
 
-for window in client.visibleWindows() {
+for window in managedWindows(client) {
     store.upsert(window)
     if persistedState.floating?[window.persistentKey] == true { store.setFloating(true, for: window.id) }
     workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
     if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
 }
 
-if let focusedWindow = client.focusedWindow() {
+if let focusedWindow = client.focusedWindow(), focusedWindow.bundleIdentifier != terminalController.bundleIdentifier {
     store.upsert(focusedWindow)
     if persistedState.floating?[focusedWindow.persistentKey] == true { store.setFloating(true, for: focusedWindow.id) }
     workspaces.value.register(focusedWindow, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
@@ -55,7 +56,7 @@ notifyBar(workspace: workspaces.value.activeWorkspace, layout: workspaces.value.
 let observerRegistry = AXObserverRegistry { processID, event in
     guard let application = NSRunningApplication(processIdentifier: processID) else {
         if case .environmentChanged = event {
-            for window in client.visibleWindows() { store.upsert(window) }
+            for window in managedWindows(client) { store.upsert(window) }
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         }
         return
@@ -69,6 +70,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
                 elementHash: Int(truncatingIfNeeded: CFHash(focusedWindow))
             )
             guard let window = client.windows(for: application).first(where: { $0.id == focusedID }) else { return }
+            guard window.bundleIdentifier != terminalController.bundleIdentifier else { return }
             store.upsert(window)
             workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
             store.setFocusedWindow(window.id)
@@ -85,11 +87,12 @@ let observerRegistry = AXObserverRegistry { processID, event in
             print("macwm: tracking \(store.windows.count) windows")
         case .windowCreated(_):
             guard !layoutGuard.isApplying else { return }
+            let windows = client.windows(for: application).filter { $0.bundleIdentifier != terminalController.bundleIdentifier }
             store.replace(
-                windows: client.windows(for: application),
+                windows: windows,
                 forProcessID: UInt32(application.processIdentifier)
             )
-            for window in client.windows(for: application) {
+            for window in windows {
                 workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
                 if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
             }
@@ -99,7 +102,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
             print("macwm: tracking \(store.windows.count) windows")
         case .environmentChanged:
             guard !layoutGuard.isApplying else { return }
-            let windows = client.visibleWindows()
+            let windows = managedWindows(client)
             store.replaceAll(windows)
             for window in windows {
                 workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
@@ -145,6 +148,8 @@ private func handle(_ action: HotkeyManager.Action, client: AXClient, store: ino
         _ = execute(.maximize, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
     case .toggleFloat:
         _ = execute(.toggleFloat, client: client, store: &store, maximizedFrames: &maximizedFrames, configuration: configuration, workspaces: workspaces)
+    case .toggleTerminal:
+        terminalController.toggle()
     }
 }
 
@@ -159,8 +164,9 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     case .reload:
         guard let updatedConfiguration = ConfigLoader.loadValidated() else { return "error: invalid configuration" }
         configuration.value = updatedConfiguration
+        terminalController.update(bundleIdentifier: updatedConfiguration.terminalBundleIdentifier)
         client.updateRules(configuration.value.rules)
-        for window in client.visibleWindows() {
+        for window in managedWindows(client) {
             store.upsert(window)
             workspaces.value.register(window, rules: configuration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
             guard let rule = client.rule(for: window) else { continue }
@@ -220,15 +226,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, floating: store.persistedFloating, maximized: persistedMaximizedFrames(store: store, maximizedFrames: maximizedFrames))
             return "ok"
         }
-        guard let screen = screen(for: currentFrame) else { return "error: no screen" }
-        let visibleFrame = screen.visibleFrame
-        let accessibilityOriginY = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
-        let targetFrame = Frame(
-            x: visibleFrame.origin.x,
-            y: accessibilityOriginY - visibleFrame.origin.y - visibleFrame.height,
-            width: visibleFrame.width,
-            height: visibleFrame.height
-        )
+        guard let targetFrame = client.maximizedFrame(for: focusedWindow) else { return "error: no screen" }
         guard client.setFrame(targetFrame, for: focusedWindow) else { return "error: unable to maximize window" }
         maximizedFrames[focusedWindow.id] = currentFrame
         store.updateFrame(targetFrame, for: focusedWindow.id)
@@ -239,22 +237,14 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, floating: store.persistedFloating)
         return "ok"
+    case .toggleTerminal:
+        terminalController.toggle()
+        return "ok"
     }
 }
 
-private func screen(for accessibilityFrame: Frame) -> NSScreen? {
-    let center = CGPoint(x: accessibilityFrame.x + accessibilityFrame.width / 2, y: accessibilityFrame.y + accessibilityFrame.height / 2)
-    let accessibilityOriginY = NSScreen.screens.first?.frame.maxY ?? 0
-    return NSScreen.screens.first { screen in
-        let frame = screen.frame
-        let accessibilityScreenFrame = CGRect(
-            x: frame.origin.x,
-            y: accessibilityOriginY - frame.origin.y - frame.height,
-            width: frame.width,
-            height: frame.height
-        )
-        return accessibilityScreenFrame.contains(center)
-    } ?? NSScreen.screens.first
+private func managedWindows(_ client: AXClient) -> [ManagedWindow] {
+    client.visibleWindows().filter { $0.bundleIdentifier != terminalController.bundleIdentifier }
 }
 
 private func persistedMaximizedFrames(store: WindowStore, maximizedFrames: [WindowID: Frame]) -> [WindowKey: Frame] {
@@ -265,7 +255,7 @@ private func persistedMaximizedFrames(store: WindowStore, maximizedFrames: [Wind
 }
 
 private func syncFocusedWindow(client: AXClient, store: inout WindowStore) {
-    guard let focusedWindow = client.focusedWindow() else { return }
+    guard let focusedWindow = client.focusedWindow(), focusedWindow.bundleIdentifier != terminalController.bundleIdentifier else { return }
     store.upsert(focusedWindow)
     store.setFocusedWindow(focusedWindow.id)
 }

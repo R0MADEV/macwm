@@ -9,6 +9,7 @@ public enum Command: Equatable, Sendable {
     case resize(ResizeOperation)
     case maximize
     case toggleFloat
+    case toggleTerminal
 
     public static func parse(_ arguments: [String]) -> Command? {
         guard let name = arguments.first else { return nil }
@@ -28,6 +29,7 @@ public enum Command: Equatable, Sendable {
         case "resize": return value.flatMap(ResizeOperation.init(rawValue:)) .map(Command.resize)
         case "maximize": return arguments.count == 1 ? .maximize : nil
         case "toggle-float": return arguments.count == 1 ? .toggleFloat : nil
+        case "toggle-terminal": return arguments.count == 1 ? .toggleTerminal : nil
         default: return nil
         }
     }
@@ -44,6 +46,7 @@ public enum Command: Equatable, Sendable {
         case let .resize(operation): return "resize \(operation.rawValue)"
         case .maximize: return "maximize"
         case .toggleFloat: return "toggle-float"
+        case .toggleTerminal: return "toggle-terminal"
         }
     }
 }

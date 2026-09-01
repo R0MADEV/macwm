@@ -5,13 +5,15 @@ public struct Config: Equatable, Sendable {
     public var innerGap: Double
     public var layout: LayoutKind
     public var barPosition: BarPosition
+    public var terminalBundleIdentifier: String
     public var autoTile: Bool
     public var rules: [WindowRule]
     public var hotkeys: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, barPosition: BarPosition = .top, rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys) {
         self.layout = layout
         self.barPosition = barPosition
+        self.terminalBundleIdentifier = terminalBundleIdentifier
         self.outerGap = outerGap
         self.innerGap = innerGap
         self.autoTile = autoTile
@@ -22,7 +24,7 @@ public struct Config: Equatable, Sendable {
     public static let defaultHotkeys: [String: String] = [
         "focus_left": "alt+h", "focus_down": "alt+j", "focus_up": "alt+k", "focus_right": "alt+l",
         "move_left": "alt+shift+h", "move_down": "alt+shift+j", "move_up": "alt+shift+k", "move_right": "alt+shift+l",
-        "resize": "alt+r", "maximize": "alt+m", "toggle_float": "alt+f", "workspace_1": "alt+1", "workspace_2": "alt+2", "workspace_3": "alt+3",
+        "resize": "alt+r", "maximize": "alt+m", "toggle_float": "alt+f", "terminal_toggle": "grave", "workspace_1": "alt+1", "workspace_2": "alt+2", "workspace_3": "alt+3",
         "workspace_4": "alt+4", "workspace_5": "alt+5", "workspace_6": "alt+6", "workspace_7": "alt+7",
         "workspace_8": "alt+8", "workspace_9": "alt+9"
     ]
@@ -98,6 +100,11 @@ public struct Config: Equatable, Sendable {
             case "bar.position":
                 guard let position = BarPosition(rawValue: unquoted(value)) else { return nil }
                 config.barPosition = position
+            case "terminal.bundle_id":
+                let bundleIdentifier = unquoted(value)
+                let validBundleIdentifier = !bundleIdentifier.isEmpty && !bundleIdentifier.contains(where: { $0.isWhitespace })
+                guard validBundleIdentifier else { return nil }
+                config.terminalBundleIdentifier = bundleIdentifier
             case "general.gap":
                 guard let gap = nonNegativeDouble(value) else { return nil }
                 config.outerGap = gap
@@ -109,7 +116,7 @@ public struct Config: Equatable, Sendable {
                 guard Bool(value) != nil else { return nil }
             case "keys.focus_left", "keys.focus_down", "keys.focus_up", "keys.focus_right",
                  "keys.move_left", "keys.move_down", "keys.move_up", "keys.move_right",
-                 "keys.toggle_float", "keys.maximize", "keys.resize":
+                 "keys.toggle_float", "keys.maximize", "keys.resize", "keys.terminal_toggle":
                 guard !value.isEmpty else { return nil }
                 config.hotkeys[key] = unquoted(value)
             case "workspaces.count":
