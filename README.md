@@ -52,9 +52,10 @@ swift build
 swift build --build-tests
 ```
 
-Tests use the explicit `swift-testing` package because this manifest targets
-Swift tools 6.0 while the current test sources import `Testing`. The test
-bundle is therefore buildable without relying on an undeclared module. Run it
+Tests use the Swift Testing module bundled with the Xcode toolchain. Command
+Line Tools do not ship it, so build the test target with Xcode selected
+(`sudo xcode-select -s /Applications/Xcode.app`) or by prefixing the command
+with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Run the tests
 from Xcode or an approved test service; this repository does not require
 credentials or user configuration changes.
 

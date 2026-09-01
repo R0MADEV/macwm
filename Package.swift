@@ -10,15 +10,12 @@ let package = Package(
         .executable(name: "macwm", targets: ["MacWMCLI"]),
         .executable(name: "macwm-bar", targets: ["MacWMBar"])
     ],
-    dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "0.9.0")
-    ],
     targets: [
         .target(name: "MacWMCore"),
         .target(name: "MacWMTransport", dependencies: ["MacWMCore"]),
         .executableTarget(name: "MacWMDaemon", dependencies: ["MacWMCore", "MacWMTransport"]),
         .executableTarget(name: "MacWMCLI", dependencies: ["MacWMCore", "MacWMTransport"]),
         .executableTarget(name: "MacWMBar", dependencies: ["MacWMCore", "MacWMTransport"]),
-        .testTarget(name: "MacWMCoreTests", dependencies: ["MacWMCore", .product(name: "Testing", package: "swift-testing")])
+        .testTarget(name: "MacWMCoreTests", dependencies: ["MacWMCore"])
     ]
 )
