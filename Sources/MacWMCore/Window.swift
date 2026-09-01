@@ -47,10 +47,11 @@ public struct ManagedWindow: Equatable, Sendable {
         self.isHidden = isHidden
     }
 
+    /// Only standard windows tile. Dialogs, panels and transient popups such as
+    /// Chrome's omnibox dropdown report other subroles and must float.
     public var isTileable: Bool {
-        let nonTileableSubroles = ["AXDialog", "AXSystemDialog", "AXFloatingWindow"]
-        let isAuxiliaryWindow = nonTileableSubroles.contains(subrole)
-        return !isAuxiliaryWindow && !isFloating && !isHidden
+        let isStandardWindow = subrole == "AXStandardWindow"
+        return isStandardWindow && !isFloating && !isHidden
     }
 
     public var persistentKey: WindowKey {

@@ -1,10 +1,19 @@
 import Testing
 @testable import MacWMCore
 
-@Test func unknownSubrolesRemainTileable() {
-    let window = ManagedWindow(id: WindowID(1), processID: 1, title: "Main", frame: nil, subrole: "")
+@Test func standardWindowsAreTileable() {
+    let window = ManagedWindow(id: WindowID(1), processID: 1, title: "Main", frame: nil, subrole: "AXStandardWindow")
 
     #expect(window.isTileable)
+}
+
+@Test func unknownSubrolesFloat() {
+    // Chrome's omnibox popup and similar transient windows report no standard subrole.
+    let popup = ManagedWindow(id: WindowID(1), processID: 1, title: "", frame: nil, subrole: "")
+    let unknown = ManagedWindow(id: WindowID(2), processID: 1, title: "", frame: nil, subrole: "AXUnknown")
+
+    #expect(!popup.isTileable)
+    #expect(!unknown.isTileable)
 }
 
 @Test func auxiliarySubrolesRemainFloating() {

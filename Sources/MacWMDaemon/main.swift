@@ -33,7 +33,7 @@ for window in managedWindows(client) {
     if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
 }
 
-if let focusedWindow = client.focusedWindow(), focusedWindow.bundleIdentifier != terminalController.bundleIdentifier {
+if let focusedWindow = client.focusedWindow(), isManaged(focusedWindow) {
     store.upsert(focusedWindow)
     if persistedState.floating?[focusedWindow.persistentKey] == true { store.setFloating(true, for: focusedWindow.id) }
     workspaces.value.register(focusedWindow, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
@@ -72,7 +72,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
                 elementHash: Int(truncatingIfNeeded: CFHash(focusedWindow))
             )
             guard let window = client.windows(for: application).first(where: { $0.id == focusedID }) else { return }
-            guard window.bundleIdentifier != terminalController.bundleIdentifier else { return }
+            guard isManaged(window) else { return }
             store.upsert(window)
             workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
             store.setFocusedWindow(window.id)
@@ -253,12 +253,19 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     }
 }
 
+/// Windows macwm never tiles, hides or parks: the configured terminal and its own bar.
+private func isManaged(_ window: ManagedWindow) -> Bool {
+    let isTerminal = window.bundleIdentifier == terminalController.bundleIdentifier
+    let isOwnBar = window.bundleIdentifier == "com.macwm.bar"
+    return !isTerminal && !isOwnBar
+}
+
 private func managedWindows(_ client: AXClient) -> [ManagedWindow] {
-    client.visibleWindows().filter { $0.bundleIdentifier != terminalController.bundleIdentifier }
+    client.visibleWindows().filter { isManaged($0) }
 }
 
 private func managedWindows(_ client: AXClient, for application: NSRunningApplication) -> [ManagedWindow] {
-    client.windows(for: application).filter { $0.bundleIdentifier != terminalController.bundleIdentifier }
+    client.windows(for: application).filter { isManaged($0) }
 }
 
 private func persistedMaximizedFrames(store: WindowStore, maximizedFrames: [WindowID: Frame]) -> [WindowKey: Frame] {
@@ -269,7 +276,7 @@ private func persistedMaximizedFrames(store: WindowStore, maximizedFrames: [Wind
 }
 
 private func syncFocusedWindow(client: AXClient, store: inout WindowStore) {
-    guard let focusedWindow = client.focusedWindow(), focusedWindow.bundleIdentifier != terminalController.bundleIdentifier else { return }
+    guard let focusedWindow = client.focusedWindow(), isManaged(focusedWindow) else { return }
     store.upsert(focusedWindow)
     store.setFocusedWindow(focusedWindow.id)
 }

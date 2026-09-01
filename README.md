@@ -159,7 +159,7 @@ are persisted in `~/.config/macwm/state.json` using bundle identifier, title,
 process ID and (when available) window number. Closed windows are removed from
 the exported state; older state files remain readable.
 
-Rules apply automatically when a window is discovered. `bundle_id` is required; `title` and `subrole` are optional additional filters. Actions include workspace assignment, floating, centering and explicit dimensions:
+Only windows whose Accessibility subrole is `AXStandardWindow` are tiled; dialogs, panels and transient popups float, and `macwm-bar` is never managed. Rules apply automatically when a window is discovered. `bundle_id` is required; `title` and `subrole` are optional additional filters. Actions include workspace assignment, floating, centering and explicit dimensions:
 
 ```toml
 [[rules]]
