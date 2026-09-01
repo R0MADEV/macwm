@@ -155,6 +155,12 @@ final class AXClient {
         return true
     }
 
+    /// Presses the window's close button, so the application runs its own close logic.
+    func close(_ window: ManagedWindow) -> Bool {
+        guard let element = element(for: window), let button: AXUIElement = value(for: element, attribute: kAXCloseButtonAttribute) else { return false }
+        return AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
+    }
+
     func setHidden(_ hidden: Bool, for window: ManagedWindow) -> Bool {
         guard let element = element(for: window) else { return false }
         let value = NSNumber(value: hidden)

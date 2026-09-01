@@ -75,3 +75,20 @@ import Testing
 
     #expect(store.windows.first?.isFloating == true)
 }
+
+@Test func cyclesFocusThroughCandidatesAndWraps() {
+    var store = WindowStore()
+    for id in [1, 2, 3, 4] { store.upsert(ManagedWindow(id: WindowID(UInt64(id)), processID: 1, title: "W\(id)")) }
+    let candidates: Set<WindowID> = [WindowID(1), WindowID(2), WindowID(4)]
+
+    store.setFocusedWindow(WindowID(2))
+    #expect(store.cyclingWindow(forward: true, among: candidates)?.id == WindowID(4))
+    #expect(store.cyclingWindow(forward: false, among: candidates)?.id == WindowID(1))
+
+    store.setFocusedWindow(WindowID(4))
+    #expect(store.cyclingWindow(forward: true, among: candidates)?.id == WindowID(1))
+
+    store.setFocusedWindow(WindowID(3))
+    #expect(store.cyclingWindow(forward: true, among: candidates)?.id == WindowID(1))
+    #expect(store.cyclingWindow(forward: true, among: [])?.id == nil)
+}

@@ -104,6 +104,12 @@ public struct WorkspaceManager: Sendable {
         return true
     }
 
+    public mutating func toggleSplit(containing window: WindowID, in workspace: Int) -> Bool {
+        guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(window) else { return false }
+        trees[workspace] = tree.togglingSplit(containing: window)
+        return true
+    }
+
     public func windows(in workspace: Int) -> [WindowID] {
         guard isValid(workspace) else { return [] }
         return assignments

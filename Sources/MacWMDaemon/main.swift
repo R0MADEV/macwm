@@ -237,6 +237,27 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     case .toggleTerminal:
         terminalController.toggle()
         return "ok"
+    case .close:
+        guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
+        guard client.close(focusedWindow) else { return "error: unable to close window" }
+        return "ok"
+    case let .cycleFocus(forward):
+        let candidateIDs = activeWorkspaceWindowIDs(store: store, workspaces: workspaces.value, tileableOnly: false)
+        guard let target = store.cyclingWindow(forward: forward, among: candidateIDs), let element = client.element(for: target) else { return "error: no window to focus" }
+        guard client.focus(element) else { return "error: unable to focus window" }
+        store.setFocusedWindow(target.id)
+        workspaces.value.recordFocus(target.id)
+        return "ok"
+    case .toggleSplit:
+        guard let focusedWindow = store.focusedWindow, focusedWindow.isTileable else { return "error: no tiled window focused" }
+        applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        guard workspaces.value.toggleSplit(containing: focusedWindow.id, in: workspaces.value.activeWorkspace) else { return "error: layout is not ready" }
+        applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+        return "ok"
+    case let .exec(commandLine):
+        launch(commandLine)
+        return "ok"
     case let .mode(name):
         keybinds.enter(mode: name)
         notifyBar(workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.layout).rawValue, position: configuration.value.barPosition, workspaces: workspaces.value)
@@ -309,9 +330,23 @@ private func focusLastWindow(in workspace: Int, client: AXClient, store: inout W
 
 private func activeWorkspaceWindowIDs(store: WindowStore, workspaces: WorkspaceManager, tileableOnly: Bool) -> Set<WindowID> {
     Set(store.windows.filter { window in
-        let isInActiveWorkspace = workspaces.workspace(for: window.id) == workspaces.activeWorkspace
-        return isInActiveWorkspace && (!tileableOnly || window.isTileable)
+        let isVisibleInActiveWorkspace = !window.isHidden && workspaces.workspace(for: window.id) == workspaces.activeWorkspace
+        return isVisibleInActiveWorkspace && (!tileableOnly || window.isTileable)
     }.map(\.id))
+}
+
+/// Runs a command line through the user's login shell so PATH and profile
+/// match an interactive terminal instead of launchd's minimal environment.
+private func launch(_ commandLine: String) {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
+    process.arguments = ["-lc", commandLine]
+    process.standardInput = FileHandle.nullDevice
+    do {
+        try process.run()
+    } catch {
+        fputs("macwm: exec failed for \(commandLine): \(error.localizedDescription)\n", stderr)
+    }
 }
 
 /// Parks every window outside `workspace` off-screen and brings the workspace's

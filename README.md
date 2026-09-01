@@ -82,6 +82,23 @@ macwm reload
 macwm toggle-float
 macwm maximize
 macwm toggle-terminal
+macwm close
+macwm focus next
+macwm focus prev
+macwm toggle-split
+macwm exec open -a Safari
+macwm mode resize
+```
+
+`close` presses the focused window's close button. `focus next` and `focus prev` cycle through the visible windows of the active workspace. `toggle-split` flips the split direction of the focused window's parent node in the BSP tree. `exec` runs the rest of the line through your login shell, so anything that works in a terminal works here. None of these have default hotkeys; bind them under `[binds]`, for example:
+
+```toml
+[binds]
+"alt+q" = "close"
+"alt+tab" = "focus next"
+"alt+shift+tab" = "focus prev"
+"alt+e" = "toggle-split"
+"alt+return" = "exec open -a iTerm"
 ```
 
 The daemon applies the configured layout to the primary display when it starts and when Accessibility reports a new window. Default gaps are `8` points. `Option+R` grows the focused window and `Option+Shift+R` shrinks it. `Option+M` toggles maximize and restore.

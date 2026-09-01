@@ -55,6 +55,17 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
         }
     }
 
+    /// Flips the direction of the split directly containing `id`, Hyprland's togglesplit.
+    public func togglingSplit(containing id: WindowID) -> WindowTree {
+        guard case let .split(direction, ratio, first, second) = self, windowIDs.contains(id) else { return self }
+        let isParentOfWindow = first == .leaf(id) || second == .leaf(id)
+        if isParentOfWindow {
+            let flipped: SplitDirection = direction == .vertical ? .horizontal : .vertical
+            return .split(direction: flipped, ratio: ratio, first: first, second: second)
+        }
+        return .split(direction: direction, ratio: ratio, first: first.togglingSplit(containing: id), second: second.togglingSplit(containing: id))
+    }
+
     public func frames(in frame: Frame) -> [WindowID: Frame] {
         switch self {
         case let .leaf(window):

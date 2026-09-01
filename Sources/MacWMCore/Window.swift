@@ -95,6 +95,18 @@ public struct WindowStore: Sendable {
             }
     }
 
+    /// Next or previous candidate in id order, wrapping around; starts from the
+    /// first candidate when the focused window is not one of them.
+    public func cyclingWindow(forward: Bool, among candidateIDs: Set<WindowID>) -> ManagedWindow? {
+        let ordered = windows.filter { candidateIDs.contains($0.id) }
+        guard !ordered.isEmpty else { return nil }
+        guard let focusedID, let index = ordered.firstIndex(where: { $0.id == focusedID }) else {
+            return forward ? ordered.first : ordered.last
+        }
+        let step = forward ? 1 : ordered.count - 1
+        return ordered[(index + step) % ordered.count]
+    }
+
     public mutating func upsert(_ window: ManagedWindow) {
         values[window.id] = merged(window, preservingFloatingStateFrom: values[window.id])
     }

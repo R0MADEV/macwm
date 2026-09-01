@@ -10,6 +10,13 @@ public enum Command: Equatable, Sendable {
     case maximize
     case toggleFloat
     case toggleTerminal
+    case close
+    /// Focus the next or previous window of the active workspace.
+    case cycleFocus(forward: Bool)
+    /// Flip the split direction of the focused window's parent node in the BSP tree.
+    case toggleSplit
+    /// Run a shell command line through the user's login shell.
+    case exec(String)
     /// Switches the hotkey engine to a named mode; "default" leaves any mode.
     case mode(String)
 
@@ -31,7 +38,16 @@ public enum Command: Equatable, Sendable {
             return LayoutKind(rawValue: layoutValue).map(Command.layout)
         case "workspace": return arguments.count == 2 ? value.flatMap(Int.init).map(Command.workspace) : nil
         case "send-to-workspace": return arguments.count == 2 ? value.flatMap(Int.init).map(Command.sendToWorkspace) : nil
-        case "focus": return value.flatMap(Direction.init(rawValue:)) .map(Command.focus)
+        case "focus":
+            guard arguments.count == 2, let value else { return nil }
+            if value == "next" { return .cycleFocus(forward: true) }
+            if value == "prev" || value == "previous" { return .cycleFocus(forward: false) }
+            return Direction(rawValue: value).map(Command.focus)
+        case "close": return arguments.count == 1 ? .close : nil
+        case "toggle-split": return arguments.count == 1 ? .toggleSplit : nil
+        case "exec":
+            let commandLine = arguments.dropFirst().joined(separator: " ")
+            return commandLine.isEmpty ? nil : .exec(commandLine)
         case "move": return value.flatMap(Direction.init(rawValue:)) .map(Command.move)
         case "resize": return value.flatMap(ResizeOperation.init(rawValue:)) .map(Command.resize)
         case "maximize": return arguments.count == 1 ? .maximize : nil
@@ -58,6 +74,10 @@ public enum Command: Equatable, Sendable {
         case .toggleFloat: return "toggle-float"
         case .toggleTerminal: return "toggle-terminal"
         case let .mode(name): return "mode \(name)"
+        case .close: return "close"
+        case let .cycleFocus(forward): return forward ? "focus next" : "focus prev"
+        case .toggleSplit: return "toggle-split"
+        case let .exec(commandLine): return "exec \(commandLine)"
         }
     }
 }
