@@ -48,7 +48,9 @@ final class HotkeyManager: @unchecked Sendable {
             tapRunLoop = CFRunLoopGetCurrent()
             CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
             CGEvent.tapEnable(tap: eventTap, enable: true)
+            fputs("macwm: hotkey tap listening on thread \(Thread.current.name ?? "unnamed")\n", stderr)
             CFRunLoopRun()
+            fputs("macwm: hotkey tap thread exited\n", stderr)
         }
         thread.name = "macwm.hotkeys"
         thread.qualityOfService = .userInteractive
@@ -56,6 +58,8 @@ final class HotkeyManager: @unchecked Sendable {
     }
 
     fileprivate func handle(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+        let arrivedAt = DispatchTime.now().uptimeNanoseconds
+        defer { Self.reportIfSlow(event: event, arrivedAt: arrivedAt) }
         let press = KeyBinding(keyCode: event.getIntegerValueField(.keyboardEventKeycode), modifiers: Self.modifiers(of: event.flags))
         switch keybinds.handle(press) {
         case .unbound:
@@ -78,6 +82,17 @@ final class HotkeyManager: @unchecked Sendable {
     fileprivate func enable() {
         guard let eventTap else { return }
         CGEvent.tapEnable(tap: eventTap, enable: true)
+    }
+
+    /// Diagnostics for keyboard lag: how long the event waited before reaching
+    /// the tap and how long the tap itself took. Normal values are well under a
+    /// millisecond each.
+    private static func reportIfSlow(event: CGEvent, arrivedAt: UInt64) {
+        let deliveryMs = Double(arrivedAt &- event.timestamp) / 1_000_000
+        let callbackMs = Double(DispatchTime.now().uptimeNanoseconds &- arrivedAt) / 1_000_000
+        let isSlow = deliveryMs > 20 || callbackMs > 5
+        guard isSlow else { return }
+        fputs("macwm: slow key event: delivery \(Int(deliveryMs)) ms, tap \(String(format: "%.2f", callbackMs)) ms\n", stderr)
     }
 
     private static func modifiers(of flags: CGEventFlags) -> Set<Modifier> {
