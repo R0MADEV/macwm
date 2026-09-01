@@ -8,9 +8,37 @@ final class AXClient: @unchecked Sendable {
     private var rules: [WindowRule]
     private var barPosition: BarPosition
 
+    /// Calls into applications that stopped answering, games and iOS apps
+    /// under load, fail after this instead of the six second default.
+    static let messagingTimeout: Float = 0.5
+
+    private let queuesLock = NSLock()
+    private var queues: [pid_t: DispatchQueue] = [:]
+
     init(rules: [WindowRule] = [], barPosition: BarPosition = .top) {
         self.rules = rules
         self.barPosition = barPosition
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), Self.messagingTimeout)
+    }
+
+    /// One serial queue per application: an application answers Accessibility
+    /// one call at a time, and a slow one must never hold up the others or
+    /// the main thread.
+    private func queue(for processID: pid_t) -> DispatchQueue {
+        queuesLock.withLock {
+            if let queue = queues[processID] { return queue }
+            let queue = DispatchQueue(label: "macwm.ax.\(processID)", qos: .userInteractive)
+            queues[processID] = queue
+            return queue
+        }
+    }
+
+    /// Raises and focuses the window on its application's queue.
+    func focus(_ window: ManagedWindow) {
+        queue(for: pid_t(window.processID)).async { [self] in
+            guard let element = element(for: window) else { return }
+            _ = focus(element)
+        }
     }
 
     func updateBarPosition(_ position: BarPosition) {
@@ -184,34 +212,41 @@ final class AXClient: @unchecked Sendable {
 
     /// One window move for `apply`. Parking and restoring only change the
     /// position, which halves the calls into the application.
-    struct FrameChange {
+    struct FrameChange: Sendable {
         let window: ManagedWindow
         let frame: Frame
         let positionOnly: Bool
     }
 
-    /// Applies many frame changes at once. Applications answer Accessibility
-    /// calls one at a time, so changes are grouped per application, each
-    /// group runs on its own thread and the window elements of an application
-    /// are fetched once instead of once per window. Returns the windows that
-    /// accepted their change.
-    func apply(_ changes: [FrameChange]) -> Set<WindowID> {
+    /// Applies many frame changes without waiting: changes are grouped per
+    /// application and queued on that application's serial queue, with its
+    /// window elements fetched once. The completion runs on the main thread
+    /// with the windows that accepted their change, after the slowest
+    /// application has answered; callers update their state optimistically.
+    func apply(_ changes: [FrameChange], completion: @escaping @Sendable (Set<WindowID>) -> Void = { _ in }) {
         let groups = Dictionary(grouping: changes) { $0.window.processID }.map { $0.value }
-        guard !groups.isEmpty else { return [] }
-        let applied = AppliedWindows()
-        DispatchQueue.concurrentPerform(iterations: groups.count) { index in
-            let group = groups[index]
-            let elements = windowElements(forProcess: pid_t(group[0].window.processID))
-            var succeeded: [WindowID] = []
-            for change in group {
-                guard let element = elements[change.window.id] else { continue }
-                if setFrame(change.frame, on: element, positionOnly: change.positionOnly, describing: change.window) {
-                    succeeded.append(change.window.id)
-                }
-            }
-            applied.add(succeeded)
+        guard !groups.isEmpty else {
+            DispatchQueue.main.async { completion([]) }
+            return
         }
-        return applied.ids
+        let applied = AppliedWindows()
+        let pending = DispatchGroup()
+        for group in groups {
+            pending.enter()
+            queue(for: pid_t(group[0].window.processID)).async { [self] in
+                let elements = windowElements(forProcess: pid_t(group[0].window.processID))
+                var succeeded: [WindowID] = []
+                for change in group {
+                    guard let element = elements[change.window.id] else { continue }
+                    if setFrame(change.frame, on: element, positionOnly: change.positionOnly, describing: change.window) {
+                        succeeded.append(change.window.id)
+                    }
+                }
+                applied.add(succeeded)
+                pending.leave()
+            }
+        }
+        pending.notify(queue: .main) { completion(applied.ids) }
     }
 
     private final class AppliedWindows: @unchecked Sendable {

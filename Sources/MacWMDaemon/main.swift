@@ -28,7 +28,8 @@ let focusBorder = FocusBorder()
 let groupTabBars = GroupTabBars { id in
     workspaces.value.showGroupMember(id)
     applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
-    guard let window = store.windows.first(where: { $0.id == id }), let element = client.element(for: window), client.focus(element) else { return }
+    guard let window = store.windows.first(where: { $0.id == id }) else { return }
+    client.focus(window)
     store.setFocusedWindow(id)
     workspaces.value.recordFocus(id)
     updateFocusBorder(store: store, config: runtimeConfiguration.value, workspaces: workspaces.value)
@@ -142,7 +143,8 @@ let observerRegistry = AXObserverRegistry { processID, event in
                 workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace, restorePersisted: false)
                 if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
                 let belongsToActiveWorkspace = workspaces.value.workspace(for: window.id) == workspaces.value.activeWorkspace
-                if !belongsToActiveWorkspace, let (change, liveFrame) = parkChange(for: window, keepsFrame: !window.isTileable, client: client), client.apply([change]).contains(window.id) {
+                if !belongsToActiveWorkspace, let (change, liveFrame) = parkChange(for: window, keepsFrame: !window.isTileable, client: client) {
+                    client.apply([change])
                     store.updateFrame(change.frame, for: window.id)
                     if let liveFrame { parkedFrames.value[window.id] = liveFrame }
                 }
@@ -214,8 +216,8 @@ if mouse == nil { fputs("macwm: unable to register the mouse tap; Option+drag on
 
 let focusFollowsMouse = FocusFollowsMouse(client: client, focus: { id in
     let isFocusable = store.windows.contains { $0.id == id && !$0.isHidden && workspaces.value.workspace(for: $0.id) == workspaces.value.activeWorkspace }
-    guard isFocusable, store.focusedWindow?.id != id, let window = store.windows.first(where: { $0.id == id }),
-          let element = client.element(for: window), client.focus(element) else { return }
+    guard isFocusable, store.focusedWindow?.id != id, let window = store.windows.first(where: { $0.id == id }) else { return }
+    client.focus(window)
     store.setFocusedWindow(id)
     workspaces.value.recordFocus(id)
 })
@@ -302,8 +304,8 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         return switchWorkspace(workspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: configuration.value)
     case let .focus(direction):
         let candidateIDs = activeWorkspaceWindowIDs(store: store, workspaces: workspaces.value, tileableOnly: false)
-        guard let target = store.window(in: direction, among: candidateIDs), let element = client.element(for: target) else { return "error: no window in direction" }
-        guard client.focus(element) else { return "error: unable to focus window" }
+        guard let target = store.window(in: direction, among: candidateIDs) else { return "error: no window in direction" }
+        client.focus(target)
         store.setFocusedWindow(target.id)
         workspaces.value.recordFocus(target.id)
         warpCursor(to: target, enabled: configuration.value.cursorWarp)
@@ -380,8 +382,8 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         return "ok"
     case let .cycleFocus(forward):
         let candidateIDs = activeWorkspaceWindowIDs(store: store, workspaces: workspaces.value, tileableOnly: false)
-        guard let target = store.cyclingWindow(forward: forward, among: candidateIDs), let element = client.element(for: target) else { return "error: no window to focus" }
-        guard client.focus(element) else { return "error: unable to focus window" }
+        guard let target = store.cyclingWindow(forward: forward, among: candidateIDs) else { return "error: no window to focus" }
+        client.focus(target)
         store.setFocusedWindow(target.id)
         workspaces.value.recordFocus(target.id)
         warpCursor(to: target, enabled: configuration.value.cursorWarp)
@@ -413,7 +415,8 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
-        if let windowToFocus, let window = store.windows.first(where: { $0.id == windowToFocus }), let element = client.element(for: window), client.focus(element) {
+        if let windowToFocus, let window = store.windows.first(where: { $0.id == windowToFocus }) {
+            client.focus(window)
             store.setFocusedWindow(windowToFocus)
             workspaces.value.recordFocus(windowToFocus)
             warpCursor(to: window, enabled: configuration.value.cursorWarp)
@@ -469,7 +472,12 @@ private func persistedMaximizedFrames(store: WindowStore, maximizedFrames: [Wind
     })
 }
 
+/// Focus events keep the store current; Accessibility is only asked when the
+/// frontmost application disagrees, since a busy application can take a
+/// second to answer.
 private func syncFocusedWindow(client: AXClient, store: inout WindowStore) {
+    let frontmostProcessID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    if let focused = store.focusedWindow, pid_t(focused.processID) == frontmostProcessID { return }
     guard let focusedWindow = client.focusedWindow(), isManaged(focusedWindow) else { return }
     store.upsert(focusedWindow)
     store.setFocusedWindow(focusedWindow.id)
@@ -511,8 +519,8 @@ private func switchWorkspace(
 private func focusLastWindow(in workspace: Int, client: AXClient, store: inout WindowStore, workspaces: DaemonWorkspaces, warpCursor shouldWarp: Bool) {
     let candidates = store.windows.filter { !$0.isHidden && workspaces.value.workspace(for: $0.id) == workspace }
     let remembered = workspaces.value.lastFocusedWindow(in: workspace).flatMap { id in candidates.first { $0.id == id } }
-    guard let target = remembered ?? candidates.first(where: \.isTileable) ?? candidates.first,
-          let element = client.element(for: target), client.focus(element) else { return }
+    guard let target = remembered ?? candidates.first(where: \.isTileable) ?? candidates.first else { return }
+    client.focus(target)
     store.setFocusedWindow(target.id)
     workspaces.value.recordFocus(target.id)
     warpCursor(to: store.windows.first { $0.id == target.id } ?? target, enabled: shouldWarp)
@@ -585,8 +593,9 @@ private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: ino
         }
         if let change = unparkChange(for: window, willBeTiled: isTiled, client: client) { changes.append(change) }
     }
-    let applied = client.apply(changes)
-    for change in changes where applied.contains(change.window.id) {
+    client.apply(changes)
+    // Optimistic: a change an application rejects is corrected by its next event.
+    for change in changes {
         store.updateFrame(change.frame, for: change.window.id)
         if let remembered = framesToRemember[change.window.id] { parkedFrames.value[change.window.id] = remembered }
     }
@@ -670,12 +679,14 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
         guard let frame = frames[window.id] else { continue }
         changes.append(AXClient.FrameChange(window: window, frame: frame, positionOnly: false))
     }
-    let applied = client.apply(changes)
-    for change in changes where applied.contains(change.window.id) {
-        store.updateFrame(change.frame, for: change.window.id)
+    let expected = changes.count
+    client.apply(changes) { applied in
+        guard applied.count != expected else { return }
+        print("macwm: \(expected - applied.count) of \(expected) windows rejected their frame")
     }
+    for change in changes { store.updateFrame(change.frame, for: change.window.id) }
     MainActor.assumeIsolated { groupTabBars.update(tabGroups) }
-    print("macwm: applied \(layout.rawValue) to \(applied.count)/\(tileableWindows.count) windows")
+    print("macwm: applied \(layout.rawValue) to \(tileableWindows.count) windows")
     updateFocusBorder(store: store, config: config, workspaces: workspaces)
 }
 
