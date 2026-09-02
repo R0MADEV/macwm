@@ -226,10 +226,18 @@ final class AXClient: @unchecked Sendable {
     /// window elements fetched once. The completion runs on the main thread
     /// with the windows that accepted their change, after the slowest
     /// application has answered; callers update their state optimistically.
-    func apply(_ changes: [FrameChange], completion: @escaping @Sendable (Set<WindowID>) -> Void = { _ in }) {
+    struct ApplyResult: Sendable {
+        let applied: Set<WindowID>
+        /// Windows whose application refused the size outright, not just late.
+        let refusedSize: Set<WindowID>
+    }
+
+    private enum FrameOutcome { case applied, refusedSize, failed }
+
+    func apply(_ changes: [FrameChange], completion: @escaping @Sendable (ApplyResult) -> Void = { _ in }) {
         let groups = Dictionary(grouping: changes) { $0.window.processID }.map { $0.value }
         guard !groups.isEmpty else {
-            DispatchQueue.main.async { completion([]) }
+            DispatchQueue.main.async { completion(ApplyResult(applied: [], refusedSize: [])) }
             return
         }
         let applied = AppliedWindows()
@@ -238,25 +246,27 @@ final class AXClient: @unchecked Sendable {
             pending.enter()
             queue(for: pid_t(group[0].window.processID)).async { [self] in
                 let elements = windowElements(forProcess: pid_t(group[0].window.processID))
-                var succeeded: [WindowID] = []
                 for change in group {
                     guard let element = elements[change.window.id] else { continue }
-                    if setFrame(change.frame, on: element, positionOnly: change.positionOnly, describing: change.window) {
-                        succeeded.append(change.window.id)
+                    switch setFrame(change.frame, on: element, positionOnly: change.positionOnly, describing: change.window) {
+                    case .applied: applied.add(change.window.id)
+                    case .refusedSize: applied.refuse(change.window.id)
+                    case .failed: break
                     }
                 }
-                applied.add(succeeded)
                 pending.leave()
             }
         }
-        pending.notify(queue: .main) { completion(applied.ids) }
+        pending.notify(queue: .main) { completion(applied.result) }
     }
 
     private final class AppliedWindows: @unchecked Sendable {
         private let lock = NSLock()
-        private var stored: Set<WindowID> = []
-        var ids: Set<WindowID> { lock.withLock { stored } }
-        func add(_ ids: [WindowID]) { lock.withLock { stored.formUnion(ids) } }
+        private var applied: Set<WindowID> = []
+        private var refused: Set<WindowID> = []
+        var result: ApplyResult { lock.withLock { ApplyResult(applied: applied, refusedSize: refused) } }
+        func add(_ id: WindowID) { lock.withLock { _ = applied.insert(id) } }
+        func refuse(_ id: WindowID) { lock.withLock { _ = refused.insert(id) } }
     }
 
     private func windowElements(forProcess processID: pid_t) -> [WindowID: AXUIElement] {
@@ -265,32 +275,32 @@ final class AXClient: @unchecked Sendable {
         return Dictionary(elements.map { (WindowID(processID: UInt32(processID), elementHash: Int(truncatingIfNeeded: CFHash($0))), $0) }) { first, _ in first }
     }
 
-    private func setFrame(_ frame: Frame, on element: AXUIElement, positionOnly: Bool, describing window: ManagedWindow) -> Bool {
+    private func setFrame(_ frame: Frame, on element: AXUIElement, positionOnly: Bool, describing window: ManagedWindow) -> FrameOutcome {
         var point = CGPoint(x: frame.x, y: frame.y)
-        guard let position = AXValueCreate(.cgPoint, &point) else { return false }
+        guard let position = AXValueCreate(.cgPoint, &point) else { return .failed }
         let positionResult = AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, position)
         if positionOnly {
             if positionResult != .success { fputs("macwm: setPosition failed for \(window.appName) - \(window.title) (status \(positionResult.rawValue))\n", stderr) }
-            return positionResult == .success
+            return positionResult == .success ? .applied : .failed
         }
         var size = CGSize(width: frame.width, height: frame.height)
-        guard let dimensions = AXValueCreate(.cgSize, &size) else { return false }
+        guard let dimensions = AXValueCreate(.cgSize, &size) else { return .failed }
+        var sizeResult = AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, dimensions)
         if positionResult != .success {
             // Some apps reject position-first updates; retry size-first.
-            let sizeResult = AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, dimensions)
             let retryResult = AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, position)
-            guard sizeResult == .success, retryResult == .success else {
-                fputs("macwm: setFrame failed for \(window.appName) - \(window.title) (position \(positionResult.rawValue), size \(sizeResult.rawValue), retry \(retryResult.rawValue))\n", stderr)
-                return false
-            }
-            return true
-        }
-        let sizeResult = AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, dimensions)
-        guard sizeResult == .success else {
+            if sizeResult == .success, retryResult == .success { return .applied }
+            fputs("macwm: setFrame failed for \(window.appName) - \(window.title) (position \(positionResult.rawValue), size \(sizeResult.rawValue), retry \(retryResult.rawValue))\n", stderr)
+        } else if sizeResult == .success {
+            return .applied
+        } else {
             fputs("macwm: setFrame size failed for \(window.appName) - \(window.title) (status \(sizeResult.rawValue))\n", stderr)
-            return false
         }
-        return true
+        // kAXErrorFailure and kAXErrorAttributeUnsupported mean the app will
+        // never take that size; kAXErrorCannotComplete is a timeout and may pass.
+        let refused = sizeResult == .failure || sizeResult == .attributeUnsupported
+        if positionResult == .success, sizeResult == .success { sizeResult = .success }
+        return refused ? .refusedSize : .failed
     }
 
     func setHidden(_ hidden: Bool, for window: ManagedWindow) -> Bool {

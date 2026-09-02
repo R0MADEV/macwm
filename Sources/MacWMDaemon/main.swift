@@ -144,9 +144,9 @@ let observerRegistry = AXObserverRegistry { processID, event in
                 if let rule = client.rule(for: window) { client.apply(rule: rule, to: window) }
                 let belongsToActiveWorkspace = workspaces.value.workspace(for: window.id) == workspaces.value.activeWorkspace
                 if !belongsToActiveWorkspace, let (change, liveFrame) = parkChange(for: window, keepsFrame: !window.isTileable, client: client) {
-                    client.apply([change])
                     store.updateFrame(change.frame, for: window.id)
                     if let liveFrame { parkedFrames.value[window.id] = liveFrame }
+                    client.apply([change]) { result in FrameCorrections.rereadRejected([change], result: result, client: client) }
                 }
             }
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
@@ -604,11 +604,38 @@ private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: ino
         }
         if let change = unparkChange(for: window, willBeTiled: isTiled, client: client) { changes.append(change) }
     }
-    client.apply(changes)
-    // Optimistic: a change an application rejects is corrected by its next event.
+    // Optimistic: the store takes the new frames now; rejected ones are re-read below.
     for change in changes {
         store.updateFrame(change.frame, for: change.window.id)
         if let remembered = framesToRemember[change.window.id] { parkedFrames.value[change.window.id] = remembered }
+    }
+    let queued = changes
+    client.apply(queued) { result in FrameCorrections.rereadRejected(queued, result: result, client: client) }
+}
+
+/// Runs on the main thread from apply's completion, after the application answered.
+enum FrameCorrections {
+    /// Re-reads the real frame of windows that did not take theirs, so parking
+    /// and tiling decisions never rest on a frame the application refused.
+    static func rereadRejected(_ changes: [AXClient.FrameChange], result: AXClient.ApplyResult, client: AXClient) {
+        for change in changes where !result.applied.contains(change.window.id) {
+            guard let actual = client.currentFrame(for: change.window) else { continue }
+            MainActor.assumeIsolated { store.updateFrame(actual, for: change.window.id) }
+        }
+    }
+
+    /// A window that refuses its tile size for good, like a fixed-size game,
+    /// floats from now on instead of leaving a hole every pass.
+    static func floatRefusingSize(_ changes: [AXClient.FrameChange], result: AXClient.ApplyResult, client: AXClient) {
+        let refused = changes.filter { result.refusedSize.contains($0.window.id) && !$0.positionOnly }
+        guard !refused.isEmpty else { return }
+        MainActor.assumeIsolated {
+            for change in refused {
+                store.setFloating(true, for: change.window.id)
+                print("macwm: \(change.window.appName) refuses its tile size; floating it")
+            }
+            applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        }
     }
 }
 
@@ -693,12 +720,12 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
         guard let frame = frames[window.id] else { continue }
         changes.append(AXClient.FrameChange(window: window, frame: frame, positionOnly: false))
     }
-    let expected = changes.count
-    client.apply(changes) { applied in
-        guard applied.count != expected else { return }
-        print("macwm: \(expected - applied.count) of \(expected) windows rejected their frame")
-    }
     for change in changes { store.updateFrame(change.frame, for: change.window.id) }
+    let queued = changes
+    client.apply(queued) { result in
+        FrameCorrections.rereadRejected(queued, result: result, client: client)
+        FrameCorrections.floatRefusingSize(queued, result: result, client: client)
+    }
     MainActor.assumeIsolated { groupTabBars.update(tabGroups) }
     print("macwm: applied \(layout.rawValue) to \(tileableWindows.count) windows")
     updateFocusBorder(store: store, config: config, workspaces: workspaces)
