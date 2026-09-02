@@ -150,7 +150,9 @@ Sources: Codex writes its rate limits and token counts into its rollout files, O
 }
 ```
 
-Replace the final `cat "$TMP"` with your own status line command reading from `"$TMP"` if you have one. Claude Code only includes plan usage for Claude.ai subscriptions, after the first response of a session.
+Replace the final `cat "$TMP"` with your own status line command reading from `"$TMP"` if you have one; without one, `"$HOME/.local/bin/macwm" agent-status claude --render` records the session and prints `model · ctx · 5h · 7d` as the status line. Claude Code only includes plan usage for Claude.ai subscriptions, after the first response of a session.
+
+Several Claude accounts, each launched with its own `CLAUDE_CONFIG_DIR`, get one entry each, `claude-max`, `claude-pro`, with their own limits; add the status line to the `settings.json` inside every config directory.
 
 ## Packaging
 

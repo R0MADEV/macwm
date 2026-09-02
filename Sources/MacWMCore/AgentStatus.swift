@@ -95,6 +95,14 @@ public struct AgentStatus: Codable, Equatable, Sendable {
         limits.map { "\($0.name) \(Int($0.usedPercent.rounded()))%" }.joined(separator: " · ")
     }
 
+    /// A status line for sessions that have none of their own.
+    public var statusLineText: String {
+        var parts = [model]
+        if let context = contextUsedPercent { parts.append("ctx \(Int(context.rounded()))%") }
+        if !limits.isEmpty { parts.append(limitsSummary) }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
     public var hottestLimitPercent: Double? {
         limits.map(\.usedPercent).max()
     }

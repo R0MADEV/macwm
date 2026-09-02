@@ -51,3 +51,9 @@ private let sample = """
     #expect(AgentStatus.accountName(fromConfigDirectory: "/Users/roma/.claude") == "")
     #expect(AgentStatus.fileName(agent: "claude", sessionID: "abc", account: "max") == "claude-max-abc.json")
 }
+
+@Test func rendersAStatusLineOfItsOwn() throws {
+    let status = try #require(AgentStatus.fromClaudeStatusLine(Data(sample.utf8)))
+
+    #expect(status.statusLineText == "Fable 5.1 · ctx 43% · 5h 37% · 7d 12%")
+}

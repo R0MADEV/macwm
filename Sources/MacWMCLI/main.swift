@@ -21,6 +21,14 @@ if command == "agent-status" {
         encoder.dateEncodingStrategy = .secondsSince1970
         try? encoder.encode(status).write(to: directory.appendingPathComponent(AgentStatus.fileName(agent: "claude", sessionID: status.sessionID, account: status.account)), options: .atomic)
     }
+    // --render prints a status line instead of passing the JSON through, for
+    // accounts that had no status line configured.
+    if arguments.contains("--render") {
+        if let status = AgentStatus.fromClaudeStatusLine(input, configDirectory: ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"]) {
+            print(status.statusLineText)
+        }
+        exit(EXIT_SUCCESS)
+    }
     FileHandle.standardOutput.write(input)
     exit(EXIT_SUCCESS)
 }
