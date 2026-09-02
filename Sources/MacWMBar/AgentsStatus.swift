@@ -26,14 +26,22 @@ final class AgentsMonitor {
         let working = workingProcesses(processes)
         var result: [Summary] = []
         for agent in Self.agents {
-            let pids = processes.filter { $0.name == agent }.map(\.pid)
-            // Old records are only worth showing while the agent runs: a weekly
-            // limit read from a two-month-old Codex session would mislead.
-            let records = self.records(for: agent).filter { pids.isEmpty ? Date().timeIntervalSince($0.updatedAt) < Self.staleAfter[agent, default: 3600] : true }
-            guard !pids.isEmpty || !records.isEmpty else { continue }
-            let isWorking = pids.contains { working.contains($0) }
-            let (line, details) = describe(agent: agent, sessions: pids.count, records: records)
-            result.append(Summary(agent: agent, sessions: pids.count, isWorking: isWorking, line: line, details: details))
+            let agentProcesses = processes.filter { $0.name == agent }
+            let allRecords = self.records(for: agent)
+            // One entry per account: Claude sessions launched with different
+            // CLAUDE_CONFIG_DIR values have separate plans and limits.
+            let accounts = Set(agentProcesses.map(\.account)).union(allRecords.map(\.account)).sorted()
+            for account in accounts {
+                let pids = agentProcesses.filter { $0.account == account }.map(\.pid)
+                // Old records are only worth showing while the agent runs: a weekly
+                // limit read from a two-month-old Codex session would mislead.
+                let records = allRecords.filter { $0.account == account }.filter { pids.isEmpty ? Date().timeIntervalSince($0.updatedAt) < Self.staleAfter[agent, default: 3600] : true }
+                guard !pids.isEmpty || !records.isEmpty else { continue }
+                let isWorking = pids.contains { working.contains($0) }
+                let label = account.isEmpty ? agent : "\(agent)-\(account)"
+                let (line, details) = describe(agent: label, sessions: pids.count, records: records)
+                result.append(Summary(agent: label, sessions: pids.count, isWorking: isWorking, line: line, details: details))
+            }
         }
         return result
     }
@@ -125,6 +133,7 @@ final class AgentsMonitor {
     private struct AgentProcess {
         let pid: pid_t
         let name: String
+        let account: String
     }
 
     private func runningAgentProcesses() -> [AgentProcess] {
@@ -137,9 +146,24 @@ final class AgentsMonitor {
             let length = proc_name(pid, &buffer, UInt32(buffer.count))
             guard length > 0 else { continue }
             let name = String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
-            if Self.agents.contains(name) { result.append(AgentProcess(pid: pid, name: name)) }
+            guard Self.agents.contains(name) else { continue }
+            let account = name == "claude" ? AgentStatus.accountName(fromConfigDirectory: environmentValue("CLAUDE_CONFIG_DIR", of: pid)) : ""
+            result.append(AgentProcess(pid: pid, name: name, account: account))
         }
         return result
+    }
+
+    /// Reads one environment variable of a process of this user through
+    /// KERN_PROCARGS2, which lists its arguments followed by its environment.
+    private func environmentValue(_ variable: String, of pid: pid_t) -> String? {
+        var name = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&name, UInt32(name.count), nil, &size, nil, 0) == 0, size > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&name, UInt32(name.count), &buffer, &size, nil, 0) == 0 else { return nil }
+        let strings = buffer[4...].split(separator: 0, omittingEmptySubsequences: true).map { String(decoding: $0, as: UTF8.self) }
+        let prefix = "\(variable)="
+        return strings.first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
     }
 
     /// A process is working when it burned CPU since the previous sample.

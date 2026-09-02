@@ -41,3 +41,13 @@ private let sample = """
     #expect(status.limitsSummary == "5h 37% · 7d 12%")
     #expect(status.hottestLimitPercent == 37)
 }
+
+@Test func accountComesFromTheConfigDirectory() throws {
+    let status = try #require(AgentStatus.fromClaudeStatusLine(Data(sample.utf8), configDirectory: "/Users/roma/.claude-max"))
+
+    #expect(status.account == "max")
+    #expect(AgentStatus.accountName(fromConfigDirectory: "/Users/roma/.claude-pro") == "pro")
+    #expect(AgentStatus.accountName(fromConfigDirectory: nil) == "")
+    #expect(AgentStatus.accountName(fromConfigDirectory: "/Users/roma/.claude") == "")
+    #expect(AgentStatus.fileName(agent: "claude", sessionID: "abc", account: "max") == "claude-max-abc.json")
+}

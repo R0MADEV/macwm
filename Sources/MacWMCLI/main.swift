@@ -14,12 +14,12 @@ guard let command = arguments.first else {
 if command == "agent-status" {
     let agent = arguments.dropFirst().first ?? ""
     let input = FileHandle.standardInput.readDataToEndOfFile()
-    if agent == "claude", let status = AgentStatus.fromClaudeStatusLine(input) {
+    if agent == "claude", let status = AgentStatus.fromClaudeStatusLine(input, configDirectory: ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"]) {
         let directory = URL(fileURLWithPath: AgentStatus.directory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .secondsSince1970
-        try? encoder.encode(status).write(to: directory.appendingPathComponent(AgentStatus.fileName(agent: "claude", sessionID: status.sessionID)), options: .atomic)
+        try? encoder.encode(status).write(to: directory.appendingPathComponent(AgentStatus.fileName(agent: "claude", sessionID: status.sessionID, account: status.account)), options: .atomic)
     }
     FileHandle.standardOutput.write(input)
     exit(EXIT_SUCCESS)
