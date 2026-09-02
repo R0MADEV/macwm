@@ -340,6 +340,21 @@ final class SettingsModule: BarModule {
     func update(_ state: BarState) {}
 }
 
+/// A fixed gap between modules, for breathing room inside a group.
+@MainActor
+final class SpacerModule: BarModule {
+    let view: NSView
+
+    init(theme: BarTheme) {
+        let spacer = NSView()
+        let length = max(16, theme.fontSize * 2)
+        (theme.isVertical ? spacer.heightAnchor : spacer.widthAnchor).constraint(equalToConstant: length).isActive = true
+        view = spacer
+    }
+
+    func update(_ state: BarState) {}
+}
+
 final class MenuButton: NSButton {
     var onLeftClick: (() -> Void)?
     var onRightClick: (() -> NSMenu)?

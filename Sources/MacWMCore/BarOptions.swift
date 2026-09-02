@@ -1,7 +1,7 @@
 /// Look and content of macwm-bar: size, colors and which modules go where,
 /// in the spirit of waybar's modules-left/center/right.
 public struct BarOptions: Equatable, Sendable, Codable {
-    public static let knownModules: Set<String> = ["workspaces", "layout", "window", "agents", "vpn", "media", "network", "cpu", "battery", "clock", "settings"]
+    public static let knownModules: Set<String> = ["workspaces", "layout", "window", "agents", "vpn", "media", "network", "cpu", "battery", "clock", "settings", "spacer"]
     public static let verticalThickness: Double = 48
 
     public var height: Double

@@ -163,6 +163,7 @@ final class BarController: NSObject {
         case "battery": return MetricModule(kind: .battery, theme: theme)
         case "clock": return MetricModule(kind: .clock, theme: theme)
         case "settings": return SettingsModule(theme: theme, actions: actions)
+        case "spacer": return SpacerModule(theme: theme)
         default: return nil
         }
     }
