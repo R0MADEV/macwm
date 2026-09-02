@@ -137,6 +137,21 @@ done
 
 `macwm-bar` keeps using native distributed notifications and does not depend on the socket.
 
+## Agent status in the bar
+
+`macwm-bar` watches the AI coding agents on the Mac, Claude Code, Codex and OpenCode, and shows one entry per agent that is running or was active in the last hour: `● claude ×3 plan 37% ctx 42%`. The dot is filled while the agent is using CPU, that is, working rather than waiting for input; `×3` counts live sessions; `plan` is the highest usage of the agent's rate-limit windows, turning yellow at 70% and red at 90%; `ctx` is the fullest context window. Hover the entry for every session with project, model, context, each limit and its reset time.
+
+Sources: Codex writes its rate limits and token counts into its rollout files, OpenCode keeps token counts in its database, and Claude Code reports usage through its status line. For Claude Code, add macwm to the status line command in `~/.claude/settings.json`; it records the session and passes the JSON through to whatever status line you already use:
+
+```json
+"statusLine": {
+  "type": "command",
+  "command": "TMP=$(mktemp); cat > \"$TMP\"; \"$HOME/.local/bin/macwm\" agent-status claude < \"$TMP\" > /dev/null 2>&1; cat \"$TMP\"; rm -f \"$TMP\""
+}
+```
+
+Replace the final `cat "$TMP"` with your own status line command reading from `"$TMP"` if you have one. Claude Code only includes plan usage for Claude.ai subscriptions, after the first response of a session.
+
 ## Packaging
 
 Build a visual installer:

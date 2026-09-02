@@ -22,6 +22,8 @@ final class BarController: NSObject {
     private var activeWorkspace = 1
     private let settings = SettingsWindowController()
     private var mode = "default"
+    private let agentsMonitor = AgentsMonitor()
+    private let agentsLabel = NSTextField(labelWithString: "")
     private var workspaceWindowCounts: [Int: Int] = [:]
 
     override init() {
@@ -132,7 +134,13 @@ final class BarController: NSObject {
 
         let leftSpacer = NSView()
         let rightSpacer = NSView()
+        agentsLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        agentsLabel.textColor = NSColor(calibratedWhite: 0.62, alpha: 1)
+        agentsLabel.alignment = .center
+        agentsLabel.maximumNumberOfLines = isVertical ? 3 : 1
+        agentsLabel.lineBreakMode = .byTruncatingTail
         statusStack.orientation = orientation
+        statusStack.addArrangedSubview(agentsLabel)
         statusStack.alignment = isVertical ? .centerX : .centerY
         statusStack.spacing = 8
         for symbolName in MacWMBarIcons.metricSymbols {
@@ -247,7 +255,24 @@ final class BarController: NSObject {
         repositionPanel()
     }
 
+    /// One entry per agent: a dot shows whether it is working, then sessions,
+    /// plan usage and context usage; the tooltip lists every session.
+    private func refreshAgents() {
+        let summaries = agentsMonitor.summaries()
+        let separator = position.isVertical ? "\n" : "  "
+        agentsLabel.stringValue = summaries.map { "\($0.isWorking ? "●" : "○") \($0.line)" }.joined(separator: separator)
+        agentsLabel.toolTip = summaries.map(\.details).joined(separator: "\n\n")
+        agentsLabel.isHidden = summaries.isEmpty
+        let hottest = summaries.map { summary in
+            summary.line.components(separatedBy: "plan ").dropFirst().first.flatMap { Int($0.prefix { $0.isNumber }) } ?? 0
+        }.max() ?? 0
+        agentsLabel.textColor = hottest >= 90 ? NSColor(calibratedRed: 0.95, green: 0.4, blue: 0.35, alpha: 1)
+            : hottest >= 70 ? NSColor(calibratedRed: 0.95, green: 0.75, blue: 0.3, alpha: 1)
+            : NSColor(calibratedWhite: 0.62, alpha: 1)
+    }
+
     @objc private func refreshMetrics() {
+        refreshAgents()
         let cpuTicks = Self.cpuTicks()
         let cpu = if let cpuTicks, let previousCPUTicks {
             Self.cpuUsage(current: cpuTicks, previous: previousCPUTicks)
