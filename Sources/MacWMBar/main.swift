@@ -93,7 +93,10 @@ final class BarController: NSObject {
             stack.alignment = isVertical ? .centerX : .centerY
             stack.spacing = 8
             for name in names {
+                // The window title has no room in a 48 point column.
+                if isVertical, name == "window" { continue }
                 guard let module = makeModule(name, theme: theme) else { continue }
+                if isVertical { module.view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal) }
                 modules.append(module)
                 stack.addArrangedSubview(module.view)
             }
@@ -132,6 +135,9 @@ final class BarController: NSObject {
             root.leadingAnchor.constraint(equalTo: content.leadingAnchor), root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             root.topAnchor.constraint(equalTo: content.topAnchor), root.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ]
+        if isVertical {
+            constraints.append(root.widthAnchor.constraint(equalToConstant: CGFloat(config.barThickness)))
+        }
         if let notch {
             center.setContentHuggingPriority(.defaultLow, for: axis)
             constraints.append(notchSpacer.widthAnchor.constraint(equalToConstant: notch.width + 24))

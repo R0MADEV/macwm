@@ -172,9 +172,9 @@ struct SettingsView: View {
             }
             TabView {
                 HotkeysTab(model: model).tabItem { Text("Hotkeys") }
-                GeneralTab(model: model).tabItem { Text("General") }
-                BarTab(model: model).tabItem { Text("Bar") }
-                AppsTab(model: model).tabItem { Text("Apps") }
+                ScrollView { GeneralTab(model: model) }.tabItem { Text("General") }
+                ScrollView { BarTab(model: model) }.tabItem { Text("Bar") }
+                ScrollView { AppsTab(model: model).frame(minHeight: 420) }.tabItem { Text("Apps") }
             }
             .padding()
             HStack {
@@ -187,7 +187,7 @@ struct SettingsView: View {
             }
             .padding([.horizontal, .bottom])
         }
-        .frame(minWidth: 680, minHeight: 480)
+        .frame(minWidth: 720, minHeight: 600)
     }
 }
 
@@ -263,12 +263,6 @@ struct GeneralTab: View {
             Toggle("Tile new windows automatically", isOn: $model.config.autoTile)
             Toggle("Focus follows mouse", isOn: $model.config.focusFollowsMouse)
             Toggle("Move the pointer to windows focused from the keyboard", isOn: $model.config.cursorWarp)
-            Picker("Bar position", selection: $model.config.barPosition) {
-                Text("Top").tag(BarPosition.top)
-                Text("Bottom").tag(BarPosition.bottom)
-                Text("Left").tag(BarPosition.left)
-                Text("Right").tag(BarPosition.right)
-            }
             Picker("Master side", selection: $model.config.master.orientation) {
                 ForEach(MasterOptions.Orientation.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }
@@ -408,7 +402,7 @@ final class SettingsWindowController {
             let window = NSWindow(contentViewController: hosting)
             window.title = "macwm Settings"
             window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
-            window.setContentSize(NSSize(width: 720, height: 520))
+            window.setContentSize(NSSize(width: 780, height: 680))
             window.center()
             window.isReleasedWhenClosed = false
             self.window = window

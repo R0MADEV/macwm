@@ -76,8 +76,9 @@ final class PillView: NSView {
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 7),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: max(18, theme.fontSize + 9))
+            heightAnchor.constraint(greaterThanOrEqualToConstant: max(18, theme.fontSize + 9))
         ])
+        if theme.isVertical { setContentCompressionResistancePriority(.defaultLow, for: .horizontal) }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -200,7 +201,7 @@ final class AgentsModule: BarModule {
         for summary in state.agents {
             let pill = pills[summary.agent] ?? makePill(for: summary)
             let plan = summary.line.components(separatedBy: "plan ").dropFirst().first.flatMap { Int($0.prefix { $0.isNumber }) }
-            pill.label.stringValue = (summary.isWorking ? "● " : "○ ") + (theme.isVertical ? summary.agent : summary.line)
+            pill.label.stringValue = theme.isVertical ? Self.compactLine(summary, plan: plan) : (summary.isWorking ? "● " : "○ ") + summary.line
             let tint: NSColor = plan.map { $0 >= 90 ? theme.danger : ($0 >= 70 ? theme.warning : theme.primary) } ?? theme.primary
             pill.label.textColor = tint
             pill.setFill(plan.map { $0 >= 90 ? theme.danger.withAlphaComponent(0.25) : ($0 >= 70 ? theme.warning.withAlphaComponent(0.2) : theme.pill) } ?? theme.pill)
@@ -213,8 +214,17 @@ final class AgentsModule: BarModule {
         view.isHidden = state.agents.isEmpty
     }
 
+    /// "●max\n19%": the account or agent tag and the plan usage, for a narrow column.
+    private static func compactLine(_ summary: AgentsMonitor.Summary, plan: Int?) -> String {
+        let tags = ["claude-max": "max", "claude-pro": "pro", "claude": "cld", "codex": "cdx", "opencode": "oc"]
+        let tag = tags[summary.agent] ?? String(summary.agent.prefix(3))
+        let dot = summary.isWorking ? "●" : "○"
+        return plan.map { "\(dot)\(tag)\n\($0)%" } ?? "\(dot)\(tag)"
+    }
+
     private func makePill(for summary: AgentsMonitor.Summary) -> PillView {
         let pill = PillView(theme: theme, text: summary.line)
+        pill.label.maximumNumberOfLines = theme.isVertical ? 2 : 1
         pills[summary.agent] = pill
         stack.addArrangedSubview(pill)
         return pill
