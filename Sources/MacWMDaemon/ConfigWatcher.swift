@@ -11,6 +11,7 @@ final class ConfigWatcher {
     private var directorySource: DispatchSourceFileSystemObject?
     private var fileSource: DispatchSourceFileSystemObject?
     private var pending: DispatchWorkItem?
+    private var lastSeen: (path: String, modified: Date?)?
 
     init(directory: String, onChange: @escaping () -> Void) {
         self.directory = directory
@@ -18,18 +19,39 @@ final class ConfigWatcher {
     }
 
     func start() {
+        lastSeen = currentConfigStamp()
         directorySource = watch(path: directory) { [weak self] in
             self?.watchConfigFile()
-            self?.scheduleReload()
+            self?.scheduleReloadIfConfigChanged()
         }
         watchConfigFile()
+    }
+
+    /// The daemon writes state.json into the same directory on every change,
+    /// so directory events only count when the config file itself changed;
+    /// reloading on our own writes would loop forever.
+    private func scheduleReloadIfConfigChanged() {
+        let stamp = currentConfigStamp()
+        let unchanged = stamp?.path == lastSeen?.path && stamp?.modified == lastSeen?.modified
+        guard !unchanged else { return }
+        lastSeen = stamp
+        scheduleReload()
+    }
+
+    private func currentConfigStamp() -> (path: String, modified: Date?)? {
+        guard let path = ConfigFile.read()?.path else { return nil }
+        let modified = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        return (path, modified)
     }
 
     private func watchConfigFile() {
         fileSource?.cancel()
         fileSource = nil
         guard let path = ConfigFile.read()?.path else { return }
-        fileSource = watch(path: path) { [weak self] in self?.scheduleReload() }
+        fileSource = watch(path: path) { [weak self] in
+            self?.lastSeen = self?.currentConfigStamp()
+            self?.scheduleReload()
+        }
     }
 
     private func watch(path: String, handler: @escaping () -> Void) -> DispatchSourceFileSystemObject? {
