@@ -80,7 +80,7 @@ windowrulev2 = size 800 600, class:^(com\\.microsoft\\.VSCode)$, title:^(Welcome
     #expect(binds["alt+grave"] == "workspace previous")
     #expect(binds["alt+w"] == "scratchpad chat")
     #expect(binds["alt+r"] == "mode resize")
-    #expect(config.binds["resize"] == ["l": "resize grow", "h": "resize shrink", "escape": "mode default"])
+    #expect(config.binds["resize"] == ["l": "resize wider", "h": "resize narrower", "escape": "mode default"])
 }
 
 @Test func translatesAndMergesWindowRules() throws {

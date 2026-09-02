@@ -170,10 +170,18 @@ public enum HyprlandConfig {
         case "exec": return argument.isEmpty ? nil : "exec \(argument)"
         case "submap": return argument == "reset" ? "mode default" : "mode \(argument)"
         case "togglespecialworkspace": return argument.isEmpty ? nil : "scratchpad \(argument)"
-        case "resizeactive", "splitratio":
+        case "resizeactive":
             let numbers = argument.split(separator: " ").compactMap { Double($0) }
-            guard let first = numbers.first(where: { $0 != 0 }) else { return nil }
-            return first > 0 ? "resize grow" : "resize shrink"
+            guard numbers.count >= 1 else { return nil }
+            let x = numbers[0]
+            let y = numbers.count > 1 ? numbers[1] : 0
+            if x != 0 { return x > 0 ? "resize wider" : "resize narrower" }
+            if y != 0 { return y > 0 ? "resize taller" : "resize shorter" }
+            return nil
+        case "splitratio":
+            guard let value = Double(argument.split(separator: " ").first ?? ""), value != 0 else { return nil }
+            return value > 0 ? "resize wider" : "resize narrower"
+        case "pseudo": return "toggle-pseudo"
         case "layoutmsg":
             let parts = argument.split(separator: " ").map(String.init)
             switch parts.first {

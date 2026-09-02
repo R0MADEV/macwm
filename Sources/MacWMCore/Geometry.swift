@@ -27,17 +27,44 @@ public enum Direction: Sendable, Equatable {
 public enum ResizeOperation: Sendable, Equatable {
     case grow
     case shrink
+    case wider
+    case narrower
+    case taller
+    case shorter
+
+    /// Change along each axis, as a sign; grow and shrink touch both.
+    public var horizontalSign: Double {
+        switch self {
+        case .grow, .wider: return 1
+        case .shrink, .narrower: return -1
+        case .taller, .shorter: return 0
+        }
+    }
+
+    public var verticalSign: Double {
+        switch self {
+        case .grow, .taller: return 1
+        case .shrink, .shorter: return -1
+        case .wider, .narrower: return 0
+        }
+    }
 }
 
 public extension Frame {
+    /// Pseudotile: the window keeps its own size, clamped to the tile, centered in it.
+    static func pseudotile(ownSize: (width: Double, height: Double), in tile: Frame) -> Frame {
+        let width = min(ownSize.width, tile.width)
+        let height = min(ownSize.height, tile.height)
+        return Frame(x: tile.x + (tile.width - width) / 2, y: tile.y + (tile.height - height) / 2, width: width, height: height)
+    }
+
     func resized(
         operation: ResizeOperation,
         amount: Double,
         minimumSize: (width: Double, height: Double) = (120, 80)
     ) -> Frame {
-        let signedAmount = operation == .grow ? amount : -amount
-        let width = max(minimumSize.width, width + signedAmount)
-        let height = max(minimumSize.height, height + signedAmount)
+        let width = max(minimumSize.width, width + operation.horizontalSign * amount)
+        let height = max(minimumSize.height, height + operation.verticalSign * amount)
         return Frame(
             x: x + (self.width - width) / 2,
             y: y + (self.height - height) / 2,

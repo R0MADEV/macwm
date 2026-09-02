@@ -48,6 +48,8 @@ public enum Command: Equatable, Sendable {
     case resize(ResizeOperation)
     case maximize
     case toggleFloat
+    /// Pseudotile: the window keeps its own size centered in its tile.
+    case togglePseudo
     case toggleTerminal
     case close
     /// Toggle a scratchpad by its configured name or bundle identifier.
@@ -115,6 +117,7 @@ public enum Command: Equatable, Sendable {
         case "resize": return value.flatMap(ResizeOperation.init(rawValue:)) .map(Command.resize)
         case "maximize": return arguments.count == 1 ? .maximize : nil
         case "toggle-float": return arguments.count == 1 ? .toggleFloat : nil
+        case "toggle-pseudo": return arguments.count == 1 ? .togglePseudo : nil
         case "toggle-terminal": return arguments.count == 1 ? .toggleTerminal : nil
         case "mode":
             guard arguments.count == 2, let value, !value.isEmpty else { return nil }
@@ -139,6 +142,7 @@ public enum Command: Equatable, Sendable {
         case let .resize(operation): return "resize \(operation.rawValue)"
         case .maximize: return "maximize"
         case .toggleFloat: return "toggle-float"
+        case .togglePseudo: return "toggle-pseudo"
         case .toggleTerminal: return "toggle-terminal"
         case let .mode(name): return "mode \(name)"
         case .close: return "close"
@@ -196,6 +200,10 @@ private extension ResizeOperation {
         switch rawValue {
         case "grow": self = .grow
         case "shrink": self = .shrink
+        case "wider": self = .wider
+        case "narrower": self = .narrower
+        case "taller": self = .taller
+        case "shorter": self = .shorter
         default: return nil
         }
     }
@@ -204,6 +212,10 @@ private extension ResizeOperation {
         switch self {
         case .grow: return "grow"
         case .shrink: return "shrink"
+        case .wider: return "wider"
+        case .narrower: return "narrower"
+        case .taller: return "taller"
+        case .shorter: return "shorter"
         }
     }
 }

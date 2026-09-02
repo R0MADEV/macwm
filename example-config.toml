@@ -43,8 +43,10 @@ terminal_toggle = "grave"
 
 # A mode is a Hyprland-style submap: only its bindings apply while active.
 [binds.resize]
-"h" = "resize shrink"
-"l" = "resize grow"
+"h" = "resize narrower"
+"l" = "resize wider"
+"k" = "resize shorter"
+"j" = "resize taller"
 "escape" = "mode default"
 
 [workspaces]

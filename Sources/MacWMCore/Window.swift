@@ -24,6 +24,8 @@ public struct ManagedWindow: Equatable, Sendable {
     public let isHidden: Bool
     /// Windows whose size Accessibility refuses to set, such as iOS apps and games, cannot tile.
     public let isResizable: Bool
+    /// Keeps its own size centered in its tile instead of filling it.
+    public let isPseudotiled: Bool
 
     public init(
         id: WindowID,
@@ -36,6 +38,7 @@ public struct ManagedWindow: Equatable, Sendable {
         isFloating: Bool = false,
         isHidden: Bool = false,
         isResizable: Bool = true,
+        isPseudotiled: Bool = false,
         windowNumber: UInt32? = nil
     ) {
         self.id = id
@@ -49,6 +52,7 @@ public struct ManagedWindow: Equatable, Sendable {
         self.isFloating = isFloating
         self.isHidden = isHidden
         self.isResizable = isResizable
+        self.isPseudotiled = isPseudotiled
     }
 
     /// Only standard windows tile. Dialogs, panels and transient popups such as
@@ -128,7 +132,17 @@ public struct WindowStore: Sendable {
             isFloating: window.isFloating,
             isHidden: window.isHidden,
             isResizable: window.isResizable,
+            isPseudotiled: window.isPseudotiled,
             windowNumber: window.windowNumber
+        )
+    }
+
+    public mutating func setPseudotiled(_ pseudotiled: Bool, for id: WindowID) {
+        guard let window = values[id] else { return }
+        values[id] = ManagedWindow(
+            id: window.id, processID: window.processID, appName: window.appName, title: window.title, frame: window.frame,
+            subrole: window.subrole, bundleIdentifier: window.bundleIdentifier, isFloating: window.isFloating, isHidden: window.isHidden,
+            isResizable: window.isResizable, isPseudotiled: pseudotiled, windowNumber: window.windowNumber
         )
     }
 
@@ -145,6 +159,7 @@ public struct WindowStore: Sendable {
             isFloating: floating,
             isHidden: window.isHidden,
             isResizable: window.isResizable,
+            isPseudotiled: window.isPseudotiled,
             windowNumber: window.windowNumber
         )
     }
@@ -196,6 +211,7 @@ public struct WindowStore: Sendable {
             isFloating: !window.isFloating,
             isHidden: window.isHidden,
             isResizable: window.isResizable,
+            isPseudotiled: window.isPseudotiled,
             windowNumber: window.windowNumber
         )
         values[focusedID] = updated
@@ -215,6 +231,7 @@ public struct WindowStore: Sendable {
             isFloating: existing.isFloating,
             isHidden: window.isHidden,
             isResizable: window.isResizable,
+            isPseudotiled: existing.isPseudotiled,
             windowNumber: window.windowNumber
         )
     }

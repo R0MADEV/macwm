@@ -347,7 +347,10 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         let activeLayout = workspaces.value.layout(for: activeWorkspace, default: configuration.value.layout)
         let isTiled = focusedWindow.isTileable && maximizedFrames[focusedWindow.id] == nil
         if isTiled, activeLayout == .masterStack {
-            configuration.value.master.adjustRatio(by: operation == .grow ? 0.05 : -0.05)
+            let alongMasterAxis = configuration.value.master.orientation == .left || configuration.value.master.orientation == .right
+            let sign = alongMasterAxis ? operation.horizontalSign : operation.verticalSign
+            guard sign != 0 else { return "ok" }
+            configuration.value.master.adjustRatio(by: 0.05 * sign)
             applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
             return "ok"
         }
@@ -358,8 +361,18 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
             return "ok"
         }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
-        let delta = operation == .grow ? 0.05 : -0.05
-        guard workspaces.value.adjustSplitRatio(containing: focusedWindow.id, by: delta, in: activeWorkspace) else { return "error: layout is not ready" }
+        // grow and shrink move the nearest split; the axis operations move the
+        // nearest vertical or horizontal split by five percent of the frame, so a
+        // window can be made wider and taller and its neighbors give way.
+        let changed: Bool
+        if operation == .grow || operation == .shrink {
+            changed = workspaces.value.adjustSplitRatio(containing: focusedWindow.id, by: operation == .grow ? 0.05 : -0.05, in: activeWorkspace)
+        } else if let layoutFrame = client.layoutFrame() {
+            changed = workspaces.value.resizeTiled(focusedWindow.id, deltaX: operation.horizontalSign * layoutFrame.width * 0.05, deltaY: operation.verticalSign * layoutFrame.height * 0.05, frame: layoutFrame, in: activeWorkspace)
+        } else {
+            changed = false
+        }
+        guard changed else { return "error: layout is not ready" }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
         return "ok"
@@ -436,6 +449,11 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
             warpCursor(to: window, enabled: configuration.value.cursorWarp)
             updateFocusBorder(store: store, config: configuration.value, workspaces: workspaces.value)
         }
+        return "ok"
+    case .togglePseudo:
+        guard let focusedWindow = store.focusedWindow, focusedWindow.isTileable else { return "error: no tiled window focused" }
+        store.setPseudotiled(!focusedWindow.isPseudotiled, for: focusedWindow.id)
+        applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         return "ok"
     case let .master(command):
         switch command {
@@ -736,6 +754,10 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
             continue
         }
         guard let frame = frames[window.id] else { continue }
+        if window.isPseudotiled, let own = client.currentFrame(for: window) {
+            changes.append(AXClient.FrameChange(window: window, frame: Frame.pseudotile(ownSize: (own.width, own.height), in: frame), positionOnly: false))
+            continue
+        }
         changes.append(AXClient.FrameChange(window: window, frame: frame, positionOnly: false))
     }
     for change in changes { store.updateFrame(change.frame, for: change.window.id) }

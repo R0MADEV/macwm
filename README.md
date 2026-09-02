@@ -80,7 +80,9 @@ All commands go through the `macwm` CLI and can be bound to any key under `[bind
 | `macwm focus next\|prev` | Cycle focus through the visible windows of the workspace, wrapping around | none |
 | `macwm move left\|down\|up\|right` | Tiled: swap the focused window with its neighbor in that direction; floating: nudge it 40 points | `Option+Shift+H/J/K/L` |
 | `macwm center` | Center the focused floating window on its screen | none |
-| `macwm resize grow\|shrink` | Tiled in BSP: give the window 5% more or less of its split; floating: grow or shrink by 40 points | `Option+R` / `Option+Shift+R` |
+| `macwm resize grow\|shrink` | Tiled in BSP: give the window 5% more or less of its nearest split; floating: grow or shrink by 40 points | `Option+R` / `Option+Shift+R` |
+| `macwm resize wider\|narrower\|taller\|shorter` | Tiled: move the nearest vertical or horizontal split by 5% of the screen so the window grows on that axis and its neighbors give way; floating: change that dimension by 40 points | none, see the resize mode |
+| `macwm toggle-pseudo` | Pseudotile: the focused window keeps its own size centered in its tile, Hyprland's `pseudo` | none |
 | `macwm maximize` | Toggle between maximized and the previous frame | `Option+M` |
 | `macwm toggle-float` | Toggle floating for the focused window | `Option+F` |
 | `macwm toggle-split` | Flip the split direction of the focused window's node in the BSP tree | none |
@@ -470,8 +472,10 @@ Bind any key to any command under `[binds]`. A binding is a `+` separated list o
 "alt+r" = "mode resize"
 
 [binds.resize]
-"h" = "resize shrink"
-"l" = "resize grow"
+"h" = "resize narrower"
+"l" = "resize wider"
+"k" = "resize shorter"
+"j" = "resize taller"
 "escape" = "mode default"
 ```
 
