@@ -23,8 +23,17 @@ sed "s|__MACWM_DAEMON__|$PREFIX/bin/macwm-daemon|g" "$ROOT/Distribution/com.macw
 sed "s|__MACWM_BAR__|$PREFIX/bin/macwm-bar|g" "$ROOT/Distribution/com.macwm.bar.plist" > "$bar_plist"
 plutil -lint "$daemon_plist" "$bar_plist" >/dev/null
 
-launchctl bootout "gui/$(id -u)"/com.macwm.daemon 2>/dev/null || true
-launchctl bootout "gui/$(id -u)"/com.macwm.bar 2>/dev/null || true
+# bootout returns before the service is gone; bootstrapping too early fails
+# with "Input/output error" and leaves nothing running.
+unload() {
+  launchctl bootout "gui/$(id -u)/$1" 2>/dev/null || true
+  for _ in $(seq 1 50); do
+    launchctl print "gui/$(id -u)/$1" >/dev/null 2>&1 || return 0
+    sleep 0.1
+  done
+}
+unload com.macwm.daemon
+unload com.macwm.bar
 launchctl bootstrap "gui/$(id -u)" "$daemon_plist"
 launchctl bootstrap "gui/$(id -u)" "$bar_plist"
 printf '%s\n' "installed macwm, macwm-daemon and macwm-bar in $PREFIX/bin"
