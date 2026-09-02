@@ -172,14 +172,22 @@ VERSION=0.1.0 sh scripts/package-pkg.sh
 
 The generated files are placed in `dist/` and are ignored by Git. Sign the applications and package before public distribution.
 
-The bar position is configured in `~/.config/macwm/config.toml`:
+The bar is configured in `~/.config/macwm/config.toml`, in the spirit of waybar:
 
 ```toml
 [bar]
-position = "top" # top, bottom, left, or right
+position = "top"          # top, bottom, left, or right
+height = 34
+font_size = 11
+accent = "#5e81ac"        # active workspace and highlights
+opacity = 0.85            # dark tint over the blurred desktop, 0 to 1
+hide_empty_workspaces = false
+left = ["workspaces", "layout"]
+center = ["window"]
+right = ["agents", "network", "cpu", "battery", "clock", "settings"]
 ```
 
-The default is `top`. Top and bottom use a horizontal layout; left and right use a vertical layout.
+Modules: `workspaces` (pills; the active one in the accent color, a dot on those with windows; click to switch), `layout` (the workspace's layout, or the hotkey mode while one is active), `window` (the focused application and title; click to focus the next window), `agents` (AI coding agents, see below; click for details), `network`, `cpu`, `battery`, `clock` and `settings` (left click opens the settings window, right click offers reload and daemon restart). Scrolling anywhere on the bar switches workspaces. Top and bottom bars are horizontal; left and right bars are vertical and 48 points wide. Changes to `[bar]` apply as soon as the file is saved.
 
 ## Distribution
 

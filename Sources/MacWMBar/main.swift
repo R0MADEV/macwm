@@ -1,65 +1,38 @@
 import AppKit
-import Darwin
 import Foundation
-import IOKit.ps
 import MacWMCore
 import MacWMTransport
 
 private let stateNotification = Notification.Name("com.macwm.stateChanged")
 
+/// The bar window: a blurred strip on one screen edge holding the configured
+/// modules, fed by the daemon's state notifications and system readings.
 @MainActor
 final class BarController: NSObject {
     private let client = UnixSocketClient(path: "/tmp/macwm.sock")
-    private var position: BarPosition
     private let panel: NSPanel
-    private let workspaceStack = NSStackView()
-    private let workspaceLabel = NSTextField(labelWithString: "Workspace 1")
-    private let statusStack = NSStackView()
-    private var statusLabels: [NSTextField] = []
+    private var config: Config
+    private var configModified: Date?
+    private var state = BarState()
+    private var modules: [BarModule] = []
     private var metricsTimer: Timer?
     private var previousCPUTicks: [UInt32]?
     private var previousNetworkBytes: (input: UInt64, output: UInt64)?
-    private var activeWorkspace = 1
-    private let settings = SettingsWindowController()
-    private var mode = "default"
     private let agentsMonitor = AgentsMonitor()
-    private let agentsLabel = NSTextField(labelWithString: "")
-    private var workspaceWindowCounts: [Int: Int] = [:]
+    private let settings = SettingsWindowController()
 
     override init() {
-        let panel = NSPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        self.position = Self.loadConfig().barPosition
-        self.panel = panel
+        panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        config = Self.loadConfig()
+        configModified = Self.configModificationDate()
         super.init()
-
         configurePanel()
-        configureContent()
+        buildContent()
         readInitialState()
         refreshMetrics()
-        metricsTimer = Timer.scheduledTimer(
-            timeInterval: 2,
-            target: self,
-            selector: #selector(refreshMetrics),
-            userInfo: nil,
-            repeats: true
-        )
-        DistributedNotificationCenter.default().addObserver(
-            self,
-            selector: #selector(stateChanged(_:)),
-            name: stateNotification,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(screenParametersChanged(_:)),
-            name: NSApplication.didChangeScreenParametersNotification,
-            object: nil
-        )
+        metricsTimer = Timer.scheduledTimer(timeInterval: 2, target: self, selector: #selector(refreshMetrics), userInfo: nil, repeats: true)
+        DistributedNotificationCenter.default().addObserver(self, selector: #selector(stateChanged(_:)), name: stateNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(screenParametersChanged(_:)), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         repositionPanel()
         panel.orderFrontRegardless()
     }
@@ -69,384 +42,233 @@ final class BarController: NSObject {
         NotificationCenter.default.removeObserver(self)
     }
 
+    private var position: BarPosition { config.barPosition }
+
+    private var actions: BarActions {
+        BarActions(
+            switchWorkspace: { [weak self] workspace in self?.send(.workspace(workspace)) },
+            cycleFocus: { [weak self] in self?.send(.cycleFocus(forward: true)) },
+            openSettings: { [weak self] in self?.openSettings() },
+            reloadConfiguration: { [weak self] in self?.send(.reload) },
+            restartDaemon: { Self.restartDaemon() }
+        )
+    }
+
     private func configurePanel() {
         panel.isFloatingPanel = true
         panel.level = .mainMenu
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isOpaque = false
-        panel.backgroundColor = NSColor.black
+        panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.delegate = self
     }
 
-    /// Builds the bar for the current position; safe to call again when it changes.
-    private func configureContent() {
-        for view in workspaceStack.arrangedSubviews + statusStack.arrangedSubviews {
-            view.removeFromSuperview()
-        }
-        NSLayoutConstraint.deactivate(workspaceStack.constraints.filter { $0.firstItem === workspaceStack && $0.secondItem == nil })
-        statusLabels.removeAll()
-        let root = NSStackView()
+    /// Builds the strip for the current position and options; safe to call again.
+    private func buildContent() {
         let isVertical = position.isVertical
-        let orientation: NSUserInterfaceLayoutOrientation = isVertical ? .vertical : .horizontal
-        root.orientation = orientation
+        let theme = BarTheme(options: config.bar, isVertical: isVertical)
+        let axis: NSLayoutConstraint.Orientation = isVertical ? .vertical : .horizontal
+
+        let content = BarContentView()
+        content.material = .hudWindow
+        content.blendingMode = .behindWindow
+        content.state = .active
+        content.onScroll = { [weak self] delta in
+            guard let self else { return }
+            let target = min(9, max(1, self.state.activeWorkspace + delta))
+            if target != self.state.activeWorkspace { self.send(.workspace(target)) }
+        }
+        let overlay = NSView()
+        overlay.wantsLayer = true
+        overlay.layer?.backgroundColor = NSColor.black.withAlphaComponent(CGFloat(config.bar.opacity)).cgColor
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(overlay)
+
+        modules = []
+        func group(_ names: [String]) -> NSStackView {
+            let stack = NSStackView()
+            stack.orientation = isVertical ? .vertical : .horizontal
+            stack.alignment = isVertical ? .centerX : .centerY
+            stack.spacing = 8
+            for name in names {
+                guard let module = makeModule(name, theme: theme) else { continue }
+                modules.append(module)
+                stack.addArrangedSubview(module.view)
+            }
+            return stack
+        }
+        let left = group(config.bar.left)
+        let center = group(config.bar.center)
+        let right = group(config.bar.right)
+        let leadingSpacer = NSView()
+        let trailingSpacer = NSView()
+        for stack in [left, right] {
+            stack.setContentHuggingPriority(.required, for: axis)
+            stack.setContentCompressionResistancePriority(.required, for: axis)
+        }
+        center.setContentHuggingPriority(.required, for: axis)
+        center.setContentCompressionResistancePriority(.defaultLow, for: axis)
+        for spacer in [leadingSpacer, trailingSpacer] { spacer.setContentHuggingPriority(.defaultLow, for: axis) }
+
+        let root = NSStackView(views: [left, leadingSpacer, center, trailingSpacer, right])
+        root.orientation = isVertical ? .vertical : .horizontal
         root.alignment = isVertical ? .centerX : .centerY
         root.distribution = .fill
-        root.spacing = 8
-        root.edgeInsets = NSEdgeInsets(top: 3, left: 10, bottom: 3, right: 10)
-        root.wantsLayer = true
-        root.layer?.backgroundColor = NSColor.black.cgColor
-        root.layer?.borderColor = NSColor.clear.cgColor
-        root.layer?.borderWidth = 0
+        root.spacing = 10
+        root.edgeInsets = isVertical ? NSEdgeInsets(top: 8, left: 2, bottom: 8, right: 2) : NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
+        root.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(root)
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: content.leadingAnchor), overlay.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: content.topAnchor), overlay.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            root.leadingAnchor.constraint(equalTo: content.leadingAnchor), root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            root.topAnchor.constraint(equalTo: content.topAnchor), root.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            isVertical ? leadingSpacer.heightAnchor.constraint(equalTo: trailingSpacer.heightAnchor) : leadingSpacer.widthAnchor.constraint(equalTo: trailingSpacer.widthAnchor)
+        ])
+        panel.contentView = content
+        updateModules()
+    }
 
-        workspaceStack.orientation = orientation
-        workspaceStack.alignment = isVertical ? .centerX : .centerY
-        workspaceStack.spacing = 2
-        let workspaceAxis: NSLayoutConstraint.Orientation = isVertical ? .vertical : .horizontal
-        workspaceStack.setContentHuggingPriority(.required, for: workspaceAxis)
-        workspaceStack.setContentCompressionResistancePriority(.required, for: workspaceAxis)
-        if isVertical {
-            workspaceStack.heightAnchor.constraint(equalToConstant: 241).isActive = true
-        } else {
-            workspaceStack.widthAnchor.constraint(equalToConstant: 214).isActive = true
+    private func makeModule(_ name: String, theme: BarTheme) -> BarModule? {
+        switch name {
+        case "workspaces": return WorkspacesModule(theme: theme, hideEmpty: config.bar.hideEmptyWorkspaces, actions: actions)
+        case "layout": return LayoutModule(theme: theme)
+        case "window": return WindowModule(theme: theme, actions: actions)
+        case "agents": return AgentsModule(theme: theme)
+        case "network": return MetricModule(kind: .network, theme: theme)
+        case "cpu": return MetricModule(kind: .cpu, theme: theme)
+        case "battery": return MetricModule(kind: .battery, theme: theme)
+        case "clock": return MetricModule(kind: .clock, theme: theme)
+        case "settings": return SettingsModule(theme: theme, actions: actions)
+        default: return nil
         }
-        for workspace in 1...9 {
-            let button = NSButton(title: "\(workspace)", target: self, action: #selector(selectWorkspace(_:)))
-            button.tag = workspace
-            button.bezelStyle = .regularSquare
-            button.setButtonType(.toggle)
-            button.isBordered = false
-            button.font = .monospacedSystemFont(ofSize: 12, weight: .medium)
-            button.contentTintColor = NSColor(calibratedWhite: 0.72, alpha: 1)
-            button.wantsLayer = true
-            button.layer?.cornerRadius = 3
-            button.translatesAutoresizingMaskIntoConstraints = false
-            if isVertical {
-                button.widthAnchor.constraint(equalToConstant: 40).isActive = true
-                button.heightAnchor.constraint(equalToConstant: 22).isActive = true
-            } else {
-                button.widthAnchor.constraint(equalToConstant: 22).isActive = true
-                button.heightAnchor.constraint(equalToConstant: 25).isActive = true
-            }
-            workspaceStack.addArrangedSubview(button)
+    }
+
+    private func updateModules() {
+        for module in modules { module.update(state) }
+    }
+
+    private func repositionPanel() {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let thickness = CGFloat(config.barThickness)
+        let screenFrame = screen.frame
+        let frame: NSRect
+        switch position {
+        case .top: frame = NSRect(x: screenFrame.minX, y: screenFrame.maxY - thickness, width: screenFrame.width, height: thickness)
+        case .bottom: frame = NSRect(x: screenFrame.minX, y: screenFrame.minY, width: screenFrame.width, height: thickness)
+        case .left: frame = NSRect(x: screenFrame.minX, y: screenFrame.minY, width: thickness, height: screenFrame.height)
+        case .right: frame = NSRect(x: screenFrame.maxX - thickness, y: screenFrame.minY, width: thickness, height: screenFrame.height)
         }
-
-        let leftSpacer = NSView()
-        let rightSpacer = NSView()
-        agentsLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-        agentsLabel.textColor = NSColor(calibratedWhite: 0.62, alpha: 1)
-        agentsLabel.alignment = .center
-        agentsLabel.maximumNumberOfLines = isVertical ? 3 : 1
-        agentsLabel.lineBreakMode = .byTruncatingTail
-        statusStack.orientation = orientation
-        statusStack.addArrangedSubview(agentsLabel)
-        statusStack.alignment = isVertical ? .centerX : .centerY
-        statusStack.spacing = 8
-        for symbolName in MacWMBarIcons.metricSymbols {
-            let metricStack = NSStackView()
-            metricStack.orientation = orientation
-            metricStack.alignment = isVertical ? .centerX : .centerY
-            metricStack.spacing = 3
-
-            let imageView = NSImageView()
-            imageView.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
-            imageView.contentTintColor = NSColor(calibratedWhite: 0.62, alpha: 1)
-            imageView.imageScaling = .scaleProportionallyUpOrDown
-            imageView.widthAnchor.constraint(equalToConstant: 12).isActive = true
-            imageView.heightAnchor.constraint(equalToConstant: 12).isActive = true
-
-            let label = NSTextField(labelWithString: "--")
-            label.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-            label.textColor = NSColor(calibratedWhite: 0.62, alpha: 1)
-            label.alignment = .center
-            label.maximumNumberOfLines = isVertical ? 2 : 1
-            metricStack.addArrangedSubview(imageView)
-            metricStack.addArrangedSubview(label)
-            statusStack.addArrangedSubview(metricStack)
-            statusLabels.append(label)
-        }
-        let clockStack = NSStackView()
-        clockStack.orientation = orientation
-        clockStack.alignment = isVertical ? .centerX : .centerY
-        clockStack.spacing = 3
-        let clockImageView = NSImageView()
-        clockImageView.image = NSImage(
-            systemSymbolName: MacWMBarIcons.clock,
-            accessibilityDescription: nil
-        )
-        clockImageView.contentTintColor = NSColor(calibratedWhite: 0.62, alpha: 1)
-        clockImageView.imageScaling = .scaleProportionallyUpOrDown
-        clockImageView.widthAnchor.constraint(equalToConstant: 12).isActive = true
-        clockImageView.heightAnchor.constraint(equalToConstant: 12).isActive = true
-        let clockLabel = NSTextField(labelWithString: "--:--")
-        clockLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-        clockLabel.textColor = NSColor(calibratedWhite: 0.62, alpha: 1)
-        clockStack.addArrangedSubview(clockImageView)
-        clockStack.addArrangedSubview(clockLabel)
-        statusStack.addArrangedSubview(clockStack)
-        statusLabels.append(clockLabel)
-
-        let settingsButton = NSButton(image: NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings") ?? NSImage(), target: self, action: #selector(openSettings))
-        settingsButton.isBordered = false
-        settingsButton.contentTintColor = NSColor(calibratedWhite: 0.62, alpha: 1)
-        settingsButton.toolTip = "macwm settings"
-        settingsButton.widthAnchor.constraint(equalToConstant: 16).isActive = true
-        settingsButton.heightAnchor.constraint(equalToConstant: 16).isActive = true
-        statusStack.addArrangedSubview(settingsButton)
-        statusStack.setContentHuggingPriority(.required, for: workspaceAxis)
-        statusStack.setContentCompressionResistancePriority(.required, for: workspaceAxis)
-        leftSpacer.setContentHuggingPriority(.defaultLow, for: workspaceAxis)
-        rightSpacer.setContentHuggingPriority(.defaultLow, for: workspaceAxis)
-
-        workspaceLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        workspaceLabel.textColor = NSColor(calibratedWhite: 0.58, alpha: 1)
-        root.addArrangedSubview(workspaceStack)
-        root.addArrangedSubview(leftSpacer)
-        root.addArrangedSubview(workspaceLabel)
-        root.addArrangedSubview(rightSpacer)
-        root.addArrangedSubview(statusStack)
-        panel.contentView = root
+        panel.setFrame(frame, display: true)
     }
 
     private func readInitialState() {
-        guard let response = client.send(.status) else {
-            updateContent()
-            return
+        guard let response = client.send(.status) else { return }
+        state.activeWorkspace = Self.value("workspace", from: response) ?? 1
+        state.mode = Self.value("mode", from: response) ?? "default"
+        state.layout = Self.value("layout", from: response) ?? "bsp"
+        if let focused: String = Self.value("focused", from: response), focused != "none" {
+            let parts = focused.components(separatedBy: " - ")
+            state.focusedApp = parts.first ?? ""
+            state.focusedTitle = parts.dropFirst().joined(separator: " - ")
         }
-        activeWorkspace = Self.value("workspace", from: response) ?? 1
-        mode = Self.value("mode", from: response) ?? "default"
-        updateContent()
-    }
-
-    @objc private func openSettings() {
-        MainActor.assumeIsolated {
-            settings.reset()
-            settings.show()
-        }
-    }
-
-    @objc private func selectWorkspace(_ sender: NSButton) {
-        guard let command = Command.parse(["workspace", String(sender.tag)]) else { return }
-        _ = client.send(command)
-        guard let response = client.send(.status), let workspace: Int = Self.value("workspace", from: response) else { return }
-        activeWorkspace = workspace
-        updateContent()
+        updateModules()
     }
 
     @objc private func stateChanged(_ notification: Notification) {
-        guard let workspace = notification.userInfo?["workspace"] as? Int else { return }
-        activeWorkspace = workspace
-        mode = notification.userInfo?["mode"] as? String ?? "default"
-        if let rawPosition = notification.userInfo?["position"] as? String, let position = BarPosition(rawValue: rawPosition), position != self.position {
-            self.position = position
-            configureContent()
-            repositionPanel()
-        }
-        if let counts = notification.userInfo?["windows"] as? [String: Int] {
-            workspaceWindowCounts = counts.reduce(into: [:]) { result, item in
+        guard let info = notification.userInfo, let workspace = info["workspace"] as? Int else { return }
+        state.activeWorkspace = workspace
+        state.mode = info["mode"] as? String ?? "default"
+        state.layout = info["layout"] as? String ?? state.layout
+        state.focusedApp = info["focusedApp"] as? String ?? ""
+        state.focusedTitle = info["focusedTitle"] as? String ?? ""
+        if let counts = info["windows"] as? [String: Int] {
+            state.windowCounts = counts.reduce(into: [:]) { result, item in
                 if let workspace = Int(item.key) { result[workspace] = item.value }
             }
         }
-        updateContent()
+        var needsRebuild = reloadConfigurationIfChanged()
+        if let rawPosition = info["position"] as? String, let position = BarPosition(rawValue: rawPosition), position != config.barPosition {
+            config.barPosition = position
+            needsRebuild = true
+        }
+        if needsRebuild {
+            buildContent()
+            repositionPanel()
+        }
+        updateModules()
+    }
+
+    /// Picks up edits to the bar options from the settings window or an editor.
+    private func reloadConfigurationIfChanged() -> Bool {
+        let modified = Self.configModificationDate()
+        guard modified != configModified else { return false }
+        configModified = modified
+        config = Self.loadConfig()
+        return true
     }
 
     @objc private func screenParametersChanged(_ notification: Notification) {
         repositionPanel()
     }
 
-    /// One entry per agent: a dot shows whether it is working, then sessions,
-    /// plan usage and context usage; the tooltip lists every session.
-    private func refreshAgents() {
-        let summaries = agentsMonitor.summaries()
-        let separator = position.isVertical ? "\n" : "  "
-        agentsLabel.stringValue = summaries.map { "\($0.isWorking ? "●" : "○") \($0.line)" }.joined(separator: separator)
-        agentsLabel.toolTip = summaries.map(\.details).joined(separator: "\n\n")
-        agentsLabel.isHidden = summaries.isEmpty
-        let hottest = summaries.map { summary in
-            summary.line.components(separatedBy: "plan ").dropFirst().first.flatMap { Int($0.prefix { $0.isNumber }) } ?? 0
-        }.max() ?? 0
-        agentsLabel.textColor = hottest >= 90 ? NSColor(calibratedRed: 0.95, green: 0.4, blue: 0.35, alpha: 1)
-            : hottest >= 70 ? NSColor(calibratedRed: 0.95, green: 0.75, blue: 0.3, alpha: 1)
-            : NSColor(calibratedWhite: 0.62, alpha: 1)
-    }
-
     @objc private func refreshMetrics() {
-        refreshAgents()
-        let cpuTicks = Self.cpuTicks()
-        let cpu = if let cpuTicks, let previousCPUTicks {
-            Self.cpuUsage(current: cpuTicks, previous: previousCPUTicks)
-        } else {
-            "--"
-        }
+        let cpuTicks = SystemMetrics.cpuTicks()
+        if let cpuTicks, let previousCPUTicks { state.cpu = SystemMetrics.cpuUsage(current: cpuTicks, previous: previousCPUTicks) }
         previousCPUTicks = cpuTicks
 
-        let network = Self.networkBytes()
-        let networkRate: String
+        let network = SystemMetrics.networkBytes()
         if let previousNetworkBytes, let network {
-            let input = network.input >= previousNetworkBytes.input
-                ? network.input - previousNetworkBytes.input
-                : 0
-            let output = network.output >= previousNetworkBytes.output
-                ? network.output - previousNetworkBytes.output
-                : 0
-            // The vertical bar is narrow: one direction per line.
-            networkRate = "↓\(Self.rate(input))\(position.isVertical ? "\n" : " ")↑\(Self.rate(output))"
-        } else {
-            networkRate = "--"
+            state.networkDown = SystemMetrics.rate(network.input >= previousNetworkBytes.input ? network.input - previousNetworkBytes.input : 0)
+            state.networkUp = SystemMetrics.rate(network.output >= previousNetworkBytes.output ? network.output - previousNetworkBytes.output : 0)
         }
         previousNetworkBytes = network
 
-        let values = [
-            cpu,
-            networkRate,
-            Self.batteryStatus(),
-            Self.currentTime()
-        ]
-        for (label, value) in zip(statusLabels, values) {
-            label.stringValue = value
-        }
+        let battery = SystemMetrics.batteryStatus()
+        state.batteryPercent = Int(battery.prefix { $0.isNumber })
+        state.batteryCharging = battery.hasSuffix("+")
+        state.clock = SystemMetrics.currentTime()
+        state.agents = agentsMonitor.summaries()
+        updateModules()
     }
 
-    private func updateContent() {
-        let isInMode = mode != "default"
-        workspaceLabel.stringValue = isInMode ? "WS \(activeWorkspace) · \(mode.uppercased())" : "WS \(activeWorkspace)"
-        for case let button as NSButton in workspaceStack.arrangedSubviews {
-            let isActive = button.tag == activeWorkspace
-            let count = workspaceWindowCounts[button.tag] ?? 0
-            let compactCount = position.isVertical ? "\(button.tag)·\(count)" : "\(button.tag) (\(count))"
-            button.title = count == 0 ? "\(button.tag)" : compactCount
-            button.state = isActive ? .on : .off
-            button.contentTintColor = isActive
-                ? NSColor(calibratedWhite: 0.98, alpha: 1)
-                : NSColor(calibratedWhite: 0.68, alpha: 1)
-            button.layer?.backgroundColor = isActive
-                ? NSColor(calibratedRed: 0.18, green: 0.34, blue: 0.56, alpha: 0.9).cgColor
-                : NSColor.clear.cgColor
-        }
+    private func send(_ command: Command) {
+        _ = client.send(command)
     }
 
-    private func repositionPanel() {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let thickness = CGFloat(position.thickness)
-        let screenFrame = screen.frame
-        let frame: NSRect
-        switch position {
-        case .top:
-            frame = NSRect(x: screenFrame.minX, y: screenFrame.maxY - thickness, width: screenFrame.width, height: thickness)
-        case .bottom:
-            frame = NSRect(x: screenFrame.minX, y: screenFrame.minY, width: screenFrame.width, height: thickness)
-        case .left:
-            frame = NSRect(x: screenFrame.minX, y: screenFrame.minY, width: thickness, height: screenFrame.height)
-        case .right:
-            frame = NSRect(x: screenFrame.maxX - thickness, y: screenFrame.minY, width: thickness, height: screenFrame.height)
-        }
-        panel.setFrame(
-            frame,
-            display: true
-        )
+    private func openSettings() {
+        settings.reset()
+        settings.show()
+    }
+
+    private static func restartDaemon() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["kickstart", "-k", "gui/\(getuid())/com.macwm.daemon"]
+        try? process.run()
     }
 
     private static func loadConfig() -> Config {
-        guard let file = ConfigFile.read(), let config = ConfigFile.parse(file.text, isHyprland: file.isHyprland) else {
-            return Config()
-        }
+        guard let file = ConfigFile.read(), let config = ConfigFile.parse(file.text, isHyprland: file.isHyprland) else { return Config() }
         return config
     }
 
+    private static func configModificationDate() -> Date? {
+        guard let path = ConfigFile.read()?.path else { return nil }
+        return (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+    }
+
     private static func value(_ key: String, from response: String) -> Int? {
-        response.split(separator: "\n")
-            .first(where: { $0.hasPrefix("\(key): ") })
-            .flatMap { Int($0.dropFirst(key.count + 2)) }
+        let text: String? = value(key, from: response)
+        return text.flatMap(Int.init)
     }
 
     private static func value(_ key: String, from response: String) -> String? {
         response.split(separator: "\n")
             .first(where: { $0.hasPrefix("\(key): ") })
             .map { String($0.dropFirst(key.count + 2)) }
-    }
-
-    private static func currentTime() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: Date())
-    }
-
-    private static func cpuTicks() -> [UInt32]? {
-        var load = host_cpu_load_info()
-        var count = mach_msg_type_number_t(
-            MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size
-        )
-        let result = withUnsafeMutablePointer(to: &load) { pointer in
-            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { return nil }
-
-        return withUnsafePointer(to: &load.cpu_ticks) { pointer in
-            pointer.withMemoryRebound(to: UInt32.self, capacity: 4) {
-                Array(UnsafeBufferPointer(start: $0, count: 4))
-            }
-        }
-    }
-
-    private static func cpuUsage(current: [UInt32], previous: [UInt32]) -> String {
-        guard current.count == previous.count, current.count > Int(CPU_STATE_IDLE) else { return "--" }
-        let ticks = zip(current, previous).map { UInt64($0) >= UInt64($1) ? UInt64($0) - UInt64($1) : 0 }
-        let total = ticks.reduce(UInt64(0)) { $0 + UInt64($1) }
-        guard total > 0 else { return "--" }
-        let idle = ticks[Int(CPU_STATE_IDLE)]
-        return "\(Int((100 * (total - idle)) / total))%"
-    }
-
-    private static func networkBytes() -> (input: UInt64, output: UInt64)? {
-        var address: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&address) == 0 else { return nil }
-        defer { freeifaddrs(address) }
-
-        var input: UInt64 = 0
-        var output: UInt64 = 0
-        var current = address
-        while let interface = current?.pointee {
-            if interface.ifa_addr?.pointee.sa_family == UInt8(AF_LINK),
-               let data = interface.ifa_data?.assumingMemoryBound(to: if_data.self).pointee {
-                let name = String(cString: interface.ifa_name)
-                if name != "lo0" {
-                    input += UInt64(data.ifi_ibytes)
-                    output += UInt64(data.ifi_obytes)
-                }
-            }
-            current = interface.ifa_next
-        }
-        return input == 0 && output == 0 ? nil : (input, output)
-    }
-
-    private static func rate(_ bytes: UInt64) -> String {
-        let kilobytes = Double(bytes) / 1024
-        if kilobytes < 1024 { return "\(Int(kilobytes))K/s" }
-        return String(format: "%.1fM/s", kilobytes / 1024)
-    }
-
-    private static func batteryStatus() -> String {
-        let blob = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let sources = IOPSCopyPowerSourcesList(blob).takeRetainedValue()
-        let count = CFArrayGetCount(sources)
-        guard count > 0 else { return "--" }
-        for index in 0..<count {
-            guard let source = CFArrayGetValueAtIndex(sources, index) else { continue }
-            let powerSource = Unmanaged<CFTypeRef>.fromOpaque(source).takeUnretainedValue()
-            guard let description = IOPSGetPowerSourceDescription(blob, powerSource)?.takeUnretainedValue()
-                    as? [String: Any],
-                  let current = description[kIOPSCurrentCapacityKey] as? Int,
-                  let maximum = description[kIOPSMaxCapacityKey] as? Int,
-                  maximum > 0 else { continue }
-            let fraction = Double(current) / Double(maximum)
-            let percentage = Int((fraction * 100).rounded())
-            let charging = (description[kIOPSIsChargingKey] as? Bool) == true
-            return "\(percentage)%\(charging ? "+" : "")"
-        }
-        return "--"
     }
 }
 

@@ -49,7 +49,11 @@ final class SettingsModel: ObservableObject {
         Set(hotkeys.filter { !KeyBinding.isValidSyntax($0.entry.binding) || Command.parse($0.entry.command) == nil }.map(\.id))
     }
 
-    var canSave: Bool { !isReadOnly && conflicts.isEmpty && invalid.isEmpty }
+    var barModulesValid: Bool {
+        [config.bar.left, config.bar.center, config.bar.right].allSatisfy(BarOptions.isValidModuleList)
+    }
+
+    var canSave: Bool { !isReadOnly && conflicts.isEmpty && invalid.isEmpty && barModulesValid && BorderOptions.isValidColor(config.bar.accent) }
 
     func addHotkey(mode: String) {
         hotkeys.append(EditableHotkey(entry: HotkeyEntry(mode: mode, binding: "", command: "")))
@@ -169,6 +173,7 @@ struct SettingsView: View {
             TabView {
                 HotkeysTab(model: model).tabItem { Text("Hotkeys") }
                 GeneralTab(model: model).tabItem { Text("General") }
+                BarTab(model: model).tabItem { Text("Bar") }
                 AppsTab(model: model).tabItem { Text("Apps") }
             }
             .padding()
@@ -277,6 +282,41 @@ struct GeneralTab: View {
                 .font(.system(.body, design: .monospaced))
         }
         .padding()
+    }
+}
+
+struct BarTab: View {
+    @ObservedObject var model: SettingsModel
+    private static let modules = BarOptions.knownModules.sorted().joined(separator: ", ")
+
+    var body: some View {
+        Form {
+            Picker("Position", selection: $model.config.barPosition) {
+                Text("Top").tag(BarPosition.top)
+                Text("Bottom").tag(BarPosition.bottom)
+                Text("Left").tag(BarPosition.left)
+                Text("Right").tag(BarPosition.right)
+            }
+            Stepper("Height: \(Int(model.config.bar.height))", value: $model.config.bar.height, in: 20...64, step: 2)
+            Stepper("Font size: \(Int(model.config.bar.fontSize))", value: $model.config.bar.fontSize, in: 8...20)
+            TextField("Accent color (#rrggbb)", text: $model.config.bar.accent).font(.system(.body, design: .monospaced))
+            Slider(value: $model.config.bar.opacity, in: 0...1) { Text("Background opacity: \(Int(model.config.bar.opacity * 100))%") }
+            Toggle("Hide empty workspaces", isOn: $model.config.bar.hideEmptyWorkspaces)
+            Section("Modules, comma separated. Available: \(Self.modules)") {
+                TextField("Left", text: moduleList(\.left)).font(.system(.body, design: .monospaced))
+                TextField("Center", text: moduleList(\.center)).font(.system(.body, design: .monospaced))
+                TextField("Right", text: moduleList(\.right)).font(.system(.body, design: .monospaced))
+                if !model.barModulesValid { Text("Unknown module name.").foregroundColor(.red) }
+            }
+        }
+        .padding()
+    }
+
+    private func moduleList(_ keyPath: WritableKeyPath<BarOptions, [String]>) -> Binding<String> {
+        Binding(
+            get: { model.config.bar[keyPath: keyPath].joined(separator: ", ") },
+            set: { model.config.bar[keyPath: keyPath] = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
+        )
     }
 }
 
