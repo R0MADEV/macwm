@@ -160,7 +160,9 @@ let observerRegistry = AXObserverRegistry { processID, event in
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
             notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
         case .environmentChanged:
-            guard !layoutGuard.isApplying else { return }
+            // Without Accessibility every query answers empty; replacing the
+            // store with that would abandon parked windows in the corner.
+            guard !layoutGuard.isApplying, AXIsProcessTrusted() else { return }
             let windows = managedWindows(client)
             store.replaceAll(windows)
             for window in windows {
@@ -223,6 +225,19 @@ let trustWatchdog = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _
     hotkeys.isTrusted = trusted
     mouse?.isTrusted = trusted
     fputs("macwm: Accessibility \(trusted ? "granted again; resuming" : "revoked; pausing hotkeys and mouse handling")\n", stderr)
+    guard trusted else { return }
+    // Windows parked while trust was gone have nobody else to bring them back.
+    MainActor.assumeIsolated {
+        let windows = managedWindows(client)
+        store.replaceAll(windows)
+        for window in windows {
+            workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
+        }
+        showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
+        applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+        print("macwm: recovered \(windows.count) windows after Accessibility returned")
+    }
 }
 
 let focusFollowsMouse = FocusFollowsMouse(client: client, focus: { id in
