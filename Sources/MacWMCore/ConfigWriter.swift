@@ -72,10 +72,10 @@ public extension Config {
             newHotkeys[name] = entry.binding
         }
         for (name, command, shifted) in LegacyHotkeys.paired {
-            guard let index = remaining.firstIndex(where: { $0.mode == KeybindEngine.defaultMode && $0.command == command }) else { continue }
-            let entry = remaining[index]
+            guard let entry = remaining.first(where: { $0.mode == KeybindEngine.defaultMode && $0.command == command }) else { continue }
             guard let shiftedBinding = LegacyHotkeys.shifted(entry.binding), take(command: shifted, binding: shiftedBinding) != nil else { continue }
-            remaining.remove(at: index)
+            // Remove by value: taking the companion above shifted the indexes.
+            remaining.removeAll { $0 == entry }
             newHotkeys[name] = entry.binding
         }
         hotkeys = newHotkeys

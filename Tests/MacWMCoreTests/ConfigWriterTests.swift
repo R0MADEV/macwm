@@ -76,3 +76,16 @@ private func richConfig() -> Config {
     #expect(KeyBinding(keyCode: 4, modifiers: [.alt, .shift]).text == "alt+shift+h")
     #expect(KeyBinding(keyCode: 36, modifiers: [.cmd, .ctrl]).text == "ctrl+cmd+return")
 }
+
+@Test func savingTheDefaultHotkeysUnchangedKeepsEveryLegacyName() {
+    var config = Config()
+    config.binds = ["default": ["alt+r": "mode resize"], "resize": ["h": "resize shrink", "escape": "mode default"]]
+
+    config.setHotkeyEntries(config.hotkeyEntries)
+
+    for workspace in 1...9 { #expect(config.hotkeys["workspace_\(workspace)"] == "alt+\(workspace)") }
+    #expect(config.hotkeys["focus_left"] == "alt+h")
+    #expect(config.hotkeys["resize"] == nil)
+    #expect(config.binds["default"] == ["alt+r": "mode resize", "alt+shift+r": "resize shrink"])
+    #expect(config.binds["resize"] == ["h": "resize shrink", "escape": "mode default"])
+}
