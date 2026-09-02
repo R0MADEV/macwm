@@ -156,6 +156,8 @@ final class BarController: NSObject {
         case "layout": return LayoutModule(theme: theme)
         case "window": return WindowModule(theme: theme, actions: actions)
         case "agents": return AgentsModule(theme: theme)
+        case "vpn": return VPNModule(theme: theme)
+        case "media": return MediaModule(theme: theme)
         case "network": return MetricModule(kind: .network, theme: theme)
         case "cpu": return MetricModule(kind: .cpu, theme: theme)
         case "battery": return MetricModule(kind: .battery, theme: theme)
