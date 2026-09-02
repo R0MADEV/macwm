@@ -225,19 +225,7 @@ let trustWatchdog = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _
     hotkeys.isTrusted = trusted
     mouse?.isTrusted = trusted
     fputs("macwm: Accessibility \(trusted ? "granted again; resuming" : "revoked; pausing hotkeys and mouse handling")\n", stderr)
-    guard trusted else { return }
-    // Windows parked while trust was gone have nobody else to bring them back.
-    MainActor.assumeIsolated {
-        let windows = managedWindows(client)
-        store.replaceAll(windows)
-        for window in windows {
-            workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
-        }
-        showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
-        applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
-        notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
-        print("macwm: recovered \(windows.count) windows after Accessibility returned")
-    }
+    if trusted { FrameCorrections.recoverAfterTrust(client: client) }
 }
 
 let focusFollowsMouse = FocusFollowsMouse(client: client, focus: { id in
@@ -636,6 +624,21 @@ enum FrameCorrections {
         for change in changes where !result.applied.contains(change.window.id) {
             guard let actual = client.currentFrame(for: change.window) else { continue }
             MainActor.assumeIsolated { store.updateFrame(actual, for: change.window.id) }
+        }
+    }
+
+    /// Windows parked while trust was gone have nobody else to bring them back.
+    static func recoverAfterTrust(client: AXClient) {
+        MainActor.assumeIsolated {
+            let windows = managedWindows(client)
+            store.replaceAll(windows)
+            for window in windows {
+                workspaces.value.register(window, rules: runtimeConfiguration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
+            }
+            showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
+            applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+            print("macwm: recovered \(windows.count) windows after Accessibility returned")
         }
     }
 
