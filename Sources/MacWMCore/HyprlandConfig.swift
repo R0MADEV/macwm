@@ -48,6 +48,14 @@ public enum HyprlandConfig {
             case ("", "windowrule"), ("", "windowrulev2"):
                 guard let rule = translateRule(value) else { return nil }
                 merge(rule, into: &config.rules)
+            case ("", "workspace"):
+                let parts = fields(value)
+                guard let workspace = parts.first.flatMap({ Int($0) }), (1...9).contains(workspace) else { return nil }
+                for option in parts.dropFirst() where option.hasPrefix("layout:") {
+                    let name = String(option.dropFirst("layout:".count))
+                    guard let layout = translateLayout(name) else { return nil }
+                    config.workspaceLayouts[workspace] = layout
+                }
             case ("", "scratchpad"):
                 let parts = fields(value)
                 guard parts.count == 2, !parts[0].isEmpty, isValidBundleIdentifier(parts[1]) else { return nil }
@@ -69,6 +77,9 @@ public enum HyprlandConfig {
                 guard let color = translateColor(value) else { return nil }
                 config.border.color = color
                 config.border.enabled = true
+            case ("general", "hide_mode"):
+                guard let mode = HideMode(rawValue: value) else { return nil }
+                config.hideMode = mode
             case ("general", "terminal"):
                 guard isValidBundleIdentifier(value) else { return nil }
                 config.terminalBundleIdentifier = value

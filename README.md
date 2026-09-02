@@ -362,6 +362,19 @@ Windows can be handled with the mouse, like `bindm` in Hyprland, by holding `Opt
 
 Windows that macwm does not manage are not affected, so `Option+click` keeps working in them.
 
+### Workspace layouts and hide mode
+
+```toml
+[workspaces.layouts]
+3 = "master"     # bsp, stack, monocle or master
+5 = "monocle"
+
+[general]
+hide_mode = "park"   # or "minimize"
+```
+
+`[workspaces.layouts]` gives a workspace its own default layout; `macwm layout` still overrides it at runtime and that choice is remembered. In the Hyprland dialect, `workspace = 3, layout:master` does the same. `hide_mode` chooses how windows of other workspaces leave the screen: `park` moves them to the bottom-right corner instantly, `minimize` sends them to the Dock, slower and animated but nothing peeks out.
+
 ### Smart gaps and autostart
 
 ```toml

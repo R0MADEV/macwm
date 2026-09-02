@@ -1,5 +1,13 @@
 import Foundation
 
+/// How windows of inactive workspaces leave the screen.
+public enum HideMode: String, Equatable, Sendable, Codable {
+    /// Move them to the bottom-right corner: instant, no Dock animation.
+    case park
+    /// Minimize them to the Dock: slower and animated, but nothing peeks out.
+    case minimize
+}
+
 public struct Config: Equatable, Sendable {
     public var outerGap: Double
     public var innerGap: Double
@@ -15,6 +23,9 @@ public struct Config: Equatable, Sendable {
     public var master: MasterOptions
     public var border: BorderOptions
     public var bar: BarOptions
+    public var hideMode: HideMode
+    /// Default layout per workspace, over `layout`; runtime layout changes still win.
+    public var workspaceLayouts: [Int: LayoutKind]
     /// Name to command line, run through the login shell once when the daemon starts.
     public var autostart: [String: String]
     public var rules: [WindowRule]
@@ -24,7 +35,7 @@ public struct Config: Equatable, Sendable {
     /// Scratchpad name to bundle identifier, from `[scratchpads]`.
     public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), border: BorderOptions = BorderOptions(), bar: BarOptions = BarOptions(), autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), border: BorderOptions = BorderOptions(), bar: BarOptions = BarOptions(), hideMode: HideMode = .park, workspaceLayouts: [Int: LayoutKind] = [:], autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
@@ -37,6 +48,8 @@ public struct Config: Equatable, Sendable {
         self.master = master
         self.border = border
         self.bar = bar
+        self.hideMode = hideMode
+        self.workspaceLayouts = workspaceLayouts
         self.autostart = autostart
         self.rules = rules
         self.hotkeys = hotkeys
@@ -51,6 +64,10 @@ public struct Config: Equatable, Sendable {
         "workspace_4": "alt+4", "workspace_5": "alt+5", "workspace_6": "alt+6", "workspace_7": "alt+7",
         "workspace_8": "alt+8", "workspace_9": "alt+9"
     ]
+
+    public func defaultLayout(for workspace: Int) -> LayoutKind {
+        workspaceLayouts[workspace] ?? layout
+    }
 
     /// Points the bar takes along its edge: its height, or a fixed width when vertical.
     public var barThickness: Double {
@@ -101,6 +118,14 @@ public struct Config: Equatable, Sendable {
             if section == "keys", key.hasPrefix("workspace_") {
                 guard let workspace = Int(key.dropFirst("workspace_".count)), (1...9).contains(workspace), !value.isEmpty else { return nil }
                 config.setLegacyHotkey(key, unquoted(value))
+                continue
+            }
+
+            if section == "workspaces.layouts" {
+                guard let workspace = Int(key), (1...9).contains(workspace) else { return nil }
+                let layoutValue = unquoted(value) == "master" ? "master-stack" : unquoted(value)
+                guard let layout = LayoutKind(rawValue: layoutValue) else { return nil }
+                config.workspaceLayouts[workspace] = layout
                 continue
             }
 
@@ -196,6 +221,9 @@ public struct Config: Equatable, Sendable {
             case "general.auto_tile":
                 guard let autoTile = Bool(value) else { return nil }
                 config.autoTile = autoTile
+            case "general.hide_mode":
+                guard let mode = HideMode(rawValue: unquoted(value)) else { return nil }
+                config.hideMode = mode
             case "general.cursor_warp":
                 guard let cursorWarp = Bool(value) else { return nil }
                 config.cursorWarp = cursorWarp

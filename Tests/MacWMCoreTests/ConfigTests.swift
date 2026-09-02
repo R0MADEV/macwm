@@ -153,3 +153,25 @@ func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
     #expect(hyprland?.bar.right == ["clock", "settings"])
     #expect(hyprland?.bar.accent == "#112233")
 }
+
+@Test func parsesWorkspaceLayoutsAndHideMode() {
+    let config = Config.parse("""
+    [general]
+    hide_mode = "minimize"
+
+    [workspaces.layouts]
+    3 = "master"
+    5 = "monocle"
+    """)
+
+    #expect(config?.hideMode == .minimize)
+    #expect(Config().hideMode == .park)
+    #expect(config?.workspaceLayouts == [3: .masterStack, 5: .monocle])
+    #expect(config?.defaultLayout(for: 3) == .masterStack)
+    #expect(config?.defaultLayout(for: 1) == .bsp)
+    #expect(Config.parse("[workspaces.layouts]\n12 = \"bsp\"") == nil)
+    #expect(Config.parse("[general]\nhide_mode = \"vanish\"") == nil)
+    let hyprland = HyprlandConfig.parse("general {\n hide_mode = minimize\n}\nworkspace = 2, layout:master\nworkspace = 4, persistent:true")
+    #expect(hyprland?.hideMode == .minimize)
+    #expect(hyprland?.workspaceLayouts == [2: .masterStack])
+}

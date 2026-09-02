@@ -82,7 +82,7 @@ if let focusedWindow = store.focusedWindow {
 showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
 applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
 workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts, barPosition: runtimeConfiguration.value.barPosition)
-notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
 
 let observerRegistry = AXObserverRegistry { processID, event in
     guard let application = NSRunningApplication(processIdentifier: processID) else {
@@ -117,7 +117,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
                 applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
                 workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
             }
-            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
             let windowWorkspace = workspaces.value.workspace(for: window.id)
             guard windowWorkspace != workspaces.value.activeWorkspace else { return }
             _ = switchWorkspace(windowWorkspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: runtimeConfiguration.value)
@@ -130,7 +130,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
             workspaces.value.remove(id)
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
-            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
             print("macwm: tracking \(store.windows.count) windows")
         case .windowCreated(_):
             guard !layoutGuard.isApplying else { return }
@@ -151,14 +151,14 @@ let observerRegistry = AXObserverRegistry { processID, event in
             }
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
-            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
             print("macwm: tracking \(store.windows.count) windows")
         case .windowVisibilityChanged:
             guard !layoutGuard.isApplying else { return }
             refresh(UInt32(application.processIdentifier), client: client, store: &store)
             showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
-            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
         case .environmentChanged:
             // Without Accessibility every query answers empty; replacing the
             // store with that would abandon parked windows in the corner.
@@ -170,7 +170,7 @@ let observerRegistry = AXObserverRegistry { processID, event in
             }
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
-            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
         }
 }
 observerRegistry.start()
@@ -255,10 +255,10 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     switch command {
     case .status:
         let focused = store.focusedWindow.map { "\($0.appName) - \($0.title)" } ?? "none"
-        let layout = workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.layout).rawValue
+        let layout = workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue
         return "workspace: \(workspaces.value.activeWorkspace)\nlayout: \(layout)\nmode: \(keybinds.mode)\nwindows: \(store.windows.count)\nfocused: \(focused)"
     case let .query(query):
-        let layout = workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.layout).rawValue
+        let layout = workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue
         let snapshot = StateSnapshot(store: store, workspaces: workspaces.value, layout: layout, mode: keybinds.mode)
         switch query {
         case .state: return StateJSON.encode(snapshot)
@@ -283,7 +283,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, floating: store.persistedFloating)
-        notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.layout).rawValue, position: configuration.value.barPosition, workspaces: workspaces.value)
+        notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: configuration.value.barPosition, workspaces: workspaces.value)
         return "ok"
     case let .layout(layout):
         workspaces.value.setLayout(layout, for: workspaces.value.activeWorkspace)
@@ -344,7 +344,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
     case let .resize(operation):
         guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }
         let activeWorkspace = workspaces.value.activeWorkspace
-        let activeLayout = workspaces.value.layout(for: activeWorkspace, default: configuration.value.layout)
+        let activeLayout = workspaces.value.layout(for: activeWorkspace, default: configuration.value.defaultLayout(for: activeWorkspace))
         let isTiled = focusedWindow.isTileable && maximizedFrames[focusedWindow.id] == nil
         if isTiled, activeLayout == .masterStack {
             let alongMasterAxis = configuration.value.master.orientation == .left || configuration.value.master.orientation == .right
@@ -474,7 +474,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         return "ok"
     case let .mode(name):
         keybinds.enter(mode: name)
-        notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.layout).rawValue, position: configuration.value.barPosition, workspaces: workspaces.value)
+        notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: configuration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: configuration.value.barPosition, workspaces: workspaces.value)
         return "ok"
     }
 }
@@ -531,7 +531,7 @@ private func switchWorkspace(
     guard workspaces.value.isValid(workspace) else { return "error: invalid workspace" }
     workspaces.value.activate(workspace)
             workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts, barPosition: config.barPosition)
-            notifyBar(store: store, workspace: workspace, layout: workspaces.value.layout(for: workspace, default: config.layout).rawValue, position: config.barPosition, workspaces: workspaces.value)
+            notifyBar(store: store, workspace: workspace, layout: workspaces.value.layout(for: workspace, default: config.defaultLayout(for: workspace)).rawValue, position: config.barPosition, workspaces: workspaces.value)
 
     let started = DispatchTime.now().uptimeNanoseconds
     showWorkspaceWindows(workspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
@@ -612,6 +612,14 @@ private func launch(_ commandLine: String) {
 private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: inout WindowStore, workspaces: WorkspaceManager, maximizedFrames: [WindowID: Frame]) {
     layoutGuard.isApplying = true
     defer { layoutGuard.isApplying = false }
+    if runtimeConfiguration.value.hideMode == .minimize {
+        // Classic hiding: minimize to the Dock; the deminiaturize events re-tile.
+        for window in store.windows {
+            let belongsToWorkspace = workspaces.workspace(for: window.id) == workspace
+            _ = client.setHidden(!belongsToWorkspace, for: window)
+        }
+        return
+    }
     var changes: [AXClient.FrameChange] = []
     var framesToRemember: [WindowID: Frame] = [:]
     for window in store.windows where !window.isHidden {
@@ -655,7 +663,7 @@ enum FrameCorrections {
             }
             showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
-            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.layout).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
             print("macwm: recovered \(windows.count) windows after Accessibility returned")
         }
     }
@@ -725,7 +733,7 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
         $0.isTileable && $0.frame != nil && maximizedFrames[$0.id] == nil && workspaces.workspace(for: $0.id) == workspaces.activeWorkspace
     }
     let windowIDs = workspaces.layoutLeaves(for: tileableWindows.map(\.id))
-    let layout = workspaces.layout(for: workspaces.activeWorkspace, default: config.layout)
+    let layout = workspaces.layout(for: workspaces.activeWorkspace, default: config.defaultLayout(for: workspaces.activeWorkspace))
     let frames: [WindowID: Frame]
     let gaps = LayoutEngine.gaps(outer: config.outerGap, inner: config.innerGap, smart: config.smartGaps, windowCount: windowIDs.count)
     if layout == .bsp, let tree = workspaces.validatedLayoutTree(for: windowIDs, in: workspaces.activeWorkspace, frame: layoutFrame) {

@@ -91,6 +91,7 @@ public extension Config {
         lines.append("focus_follows_mouse = \(focusFollowsMouse)")
         lines.append("smart_gaps = \(smartGaps)")
         lines.append("cursor_warp = \(cursorWarp)")
+        lines.append("hide_mode = \"\(hideMode.rawValue)\"")
         lines.append(contentsOf: ["", "[display]", "outer_gap = \(number(outerGap))", "inner_gap = \(number(innerGap))"])
         lines.append(contentsOf: ["", "[master]", "orientation = \"\(master.orientation.rawValue)\"", "ratio = \(master.ratio)", "count = \(master.count)"])
         lines.append(contentsOf: ["", "[border]", "enabled = \(border.enabled)", "width = \(number(border.width))", "color = \"\(border.color)\""])
@@ -104,6 +105,10 @@ public extension Config {
         lines.append(contentsOf: ["", "[keys]"])
         for name in (LegacyHotkeys.simple.map(\.name) + LegacyHotkeys.paired.map(\.name)) {
             lines.append("\(name) = \"\(hotkeys[name] ?? "none")\"")
+        }
+        if !workspaceLayouts.isEmpty {
+            lines.append(contentsOf: ["", "[workspaces.layouts]"])
+            for (workspace, layout) in workspaceLayouts.sorted(by: { $0.key < $1.key }) { lines.append("\(workspace) = \"\(layout.rawValue)\"") }
         }
         if !scratchpads.isEmpty {
             lines.append(contentsOf: ["", "[scratchpads]"])
