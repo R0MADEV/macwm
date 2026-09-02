@@ -18,6 +18,7 @@ final class AgentsMonitor {
 
     private static let agents = ["claude", "codex", "opencode"]
     private var cpuTimes: [pid_t: UInt64] = [:]
+    private var codexCache: (path: String, modified: Date, record: AgentStatus?)?
 
     func summaries() -> [Summary] {
         let processes = runningAgentProcesses()
@@ -58,10 +59,21 @@ final class AgentsMonitor {
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    /// The latest Codex rollout carries the plan's rate limits and token totals.
+    /// The newest Codex rollout that reports token counts carries the plan's
+    /// rate limits and token totals; rollouts without a response have none.
     private func codexRecord() -> AgentStatus? {
         let root = NSString(string: "~/.codex/sessions").expandingTildeInPath
-        guard let latest = newestFile(under: root, suffix: ".jsonl"), let tail = tail(of: latest, bytes: 262_144) else { return nil }
+        let candidates = newestFiles(under: root, suffix: ".jsonl", limit: 12)
+        guard let latest = candidates.first(where: { fileContains($0, "\"token_count\"") }) else { return nil }
+        let modified = (try? FileManager.default.attributesOfItem(atPath: latest))?[.modificationDate] as? Date ?? .distantPast
+        if let cached = codexCache, cached.path == latest, cached.modified == modified { return cached.record }
+        let record = parseCodexRollout(latest, modified: modified)
+        codexCache = (latest, modified, record)
+        return record
+    }
+
+    private func parseCodexRollout(_ latest: String, modified: Date) -> AgentStatus? {
+        guard let tail = tail(of: latest, bytes: 1_048_576) else { return nil }
         var limits: [AgentLimit] = []
         var context: Double?
         for line in tail.split(separator: "\n").reversed() {
@@ -82,7 +94,6 @@ final class AgentsMonitor {
             break
         }
         guard !limits.isEmpty || context != nil else { return nil }
-        let modified = (try? FileManager.default.attributesOfItem(atPath: latest))?[.modificationDate] as? Date ?? .distantPast
         return AgentStatus(agent: "codex", sessionID: (latest as NSString).lastPathComponent, project: "", model: "", contextUsedPercent: context, limits: limits, updatedAt: modified)
     }
 
@@ -168,15 +179,20 @@ final class AgentsMonitor {
         return (parts.joined(separator: " "), details.isEmpty ? "\(agent): \(sessions) running" : details)
     }
 
-    private func newestFile(under root: String, suffix: String) -> String? {
-        guard let enumerator = FileManager.default.enumerator(atPath: root) else { return nil }
-        var newest: (path: String, date: Date)?
+    private func newestFiles(under root: String, suffix: String, limit: Int) -> [String] {
+        guard let enumerator = FileManager.default.enumerator(atPath: root) else { return [] }
+        var files: [(path: String, date: Date)] = []
         for case let relative as String in enumerator where relative.hasSuffix(suffix) {
             let path = (root as NSString).appendingPathComponent(relative)
             let date = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date ?? .distantPast
-            if newest == nil || date > newest!.date { newest = (path, date) }
+            files.append((path, date))
         }
-        return newest?.path
+        return files.sorted { $0.date > $1.date }.prefix(limit).map(\.path)
+    }
+
+    private func fileContains(_ path: String, _ needle: String) -> Bool {
+        guard let data = FileManager.default.contents(atPath: path) else { return false }
+        return data.range(of: Data(needle.utf8)) != nil
     }
 
     private func tail(of path: String, bytes: Int) -> String? {
