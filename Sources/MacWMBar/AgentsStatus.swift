@@ -120,8 +120,9 @@ final class AgentsMonitor {
         var result: [AgentProcess] = []
         for pid in pids.prefix(Int(count) / MemoryLayout<pid_t>.size) where pid > 0 {
             var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-            guard proc_name(pid, &buffer, UInt32(buffer.count)) > 0 else { continue }
-            let name = String(cString: buffer)
+            let length = proc_name(pid, &buffer, UInt32(buffer.count))
+            guard length > 0 else { continue }
+            let name = String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
             if Self.agents.contains(name) { result.append(AgentProcess(pid: pid, name: name)) }
         }
         return result
