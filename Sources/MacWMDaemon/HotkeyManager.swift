@@ -6,6 +6,7 @@ import MacWMCore
 /// commands to the main thread.
 final class HotkeyManager: @unchecked Sendable {
     private var tap: EventTap?
+    var isTrusted = true { didSet { isTrusted ? tap?.resume() : tap?.pause() } }
     private let handler: (Command) -> Void
     private let keybinds: DaemonKeybinds
 

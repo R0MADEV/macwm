@@ -33,6 +33,7 @@ final class MouseManager: @unchecked Sendable {
     private static let resizeDispatchIntervalNs: UInt64 = 33_000_000
 
     private var tap: EventTap?
+    var isTrusted = true { didSet { isTrusted ? tap?.resume() : tap?.pause() } }
     private let client: AXClient
     private let targets: MouseTargets
     private let onFloatingDragEnd: (WindowID, Frame) -> Void

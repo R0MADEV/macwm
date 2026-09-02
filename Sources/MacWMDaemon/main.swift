@@ -214,6 +214,17 @@ let mouse = MouseManager(
 )
 if mouse == nil { fputs("macwm: unable to register the mouse tap; Option+drag on floating windows is disabled.\n", stderr) }
 
+// Losing Accessibility, for example when it is switched off in System
+// Settings, must stop the taps at once: an untrusted process that keeps
+// re-enabling active taps freezes keyboard and mouse for the whole Mac.
+let trustWatchdog = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+    let trusted = AXIsProcessTrusted()
+    guard trusted != hotkeys.isTrusted else { return }
+    hotkeys.isTrusted = trusted
+    mouse?.isTrusted = trusted
+    fputs("macwm: Accessibility \(trusted ? "granted again; resuming" : "revoked; pausing hotkeys and mouse handling")\n", stderr)
+}
+
 let focusFollowsMouse = FocusFollowsMouse(client: client, focus: { id in
     let isFocusable = store.windows.contains { $0.id == id && !$0.isHidden && workspaces.value.workspace(for: $0.id) == workspaces.value.activeWorkspace }
     guard isFocusable, store.focusedWindow?.id != id, let window = store.windows.first(where: { $0.id == id }) else { return }
