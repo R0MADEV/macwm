@@ -112,7 +112,13 @@ final class BarController: NSObject {
         center.setContentCompressionResistancePriority(.defaultLow, for: axis)
         for spacer in [leadingSpacer, trailingSpacer] { spacer.setContentHuggingPriority(.defaultLow, for: axis) }
 
-        let root = NSStackView(views: [left, leadingSpacer, center, trailingSpacer, right])
+        // A top bar on a screen with a camera housing keeps the left modules
+        // and the window title in the area left of the notch and the rest to
+        // its right, leaving the notch itself empty.
+        let notch = position == .top ? (NSScreen.main ?? NSScreen.screens.first)?.notch : nil
+        let notchSpacer = NSView()
+        let views = notch == nil ? [left, leadingSpacer, center, trailingSpacer, right] : [left, center, leadingSpacer, notchSpacer, trailingSpacer, right]
+        let root = NSStackView(views: views)
         root.orientation = isVertical ? .vertical : .horizontal
         root.alignment = isVertical ? .centerX : .centerY
         root.distribution = .fill
@@ -120,13 +126,20 @@ final class BarController: NSObject {
         root.edgeInsets = isVertical ? NSEdgeInsets(top: 8, left: 2, bottom: 8, right: 2) : NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
         root.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(root)
-        NSLayoutConstraint.activate([
+        var constraints = [
             overlay.leadingAnchor.constraint(equalTo: content.leadingAnchor), overlay.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             overlay.topAnchor.constraint(equalTo: content.topAnchor), overlay.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             root.leadingAnchor.constraint(equalTo: content.leadingAnchor), root.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            root.topAnchor.constraint(equalTo: content.topAnchor), root.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            isVertical ? leadingSpacer.heightAnchor.constraint(equalTo: trailingSpacer.heightAnchor) : leadingSpacer.widthAnchor.constraint(equalTo: trailingSpacer.widthAnchor)
-        ])
+            root.topAnchor.constraint(equalTo: content.topAnchor), root.bottomAnchor.constraint(equalTo: content.bottomAnchor)
+        ]
+        if let notch {
+            center.setContentHuggingPriority(.defaultLow, for: axis)
+            constraints.append(notchSpacer.widthAnchor.constraint(equalToConstant: notch.width + 24))
+            constraints.append(notchSpacer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: notch.leftAreaWidth - 12))
+        } else {
+            constraints.append(isVertical ? leadingSpacer.heightAnchor.constraint(equalTo: trailingSpacer.heightAnchor) : leadingSpacer.widthAnchor.constraint(equalTo: trailingSpacer.widthAnchor))
+        }
+        NSLayoutConstraint.activate(constraints)
         panel.contentView = content
         updateModules()
     }
@@ -269,6 +282,16 @@ final class BarController: NSObject {
         response.split(separator: "\n")
             .first(where: { $0.hasPrefix("\(key): ") })
             .map { String($0.dropFirst(key.count + 2)) }
+    }
+}
+
+private extension NSScreen {
+    /// Width of the camera housing and the usable width left of it, when present.
+    var notch: (width: CGFloat, leftAreaWidth: CGFloat)? {
+        guard safeAreaInsets.top > 0, let leftArea = auxiliaryTopLeftArea, let rightArea = auxiliaryTopRightArea else { return nil }
+        let width = frame.width - leftArea.width - rightArea.width
+        guard width > 0 else { return nil }
+        return (width, leftArea.width)
     }
 }
 
