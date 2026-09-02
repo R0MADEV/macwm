@@ -40,7 +40,7 @@ let keyboardLayoutObserver = DistributedNotificationCenter.default().addObserver
     print("macwm: keyboard layout changed; hotkeys rebuilt")
 }
 let mouseTargets = MouseTargets()
-let client = AXClient(rules: runtimeConfiguration.value.rules, barPosition: runtimeConfiguration.value.barPosition)
+let client = AXClient(rules: runtimeConfiguration.value.rules, barPosition: runtimeConfiguration.value.barPosition, barThickness: runtimeConfiguration.value.barThickness)
 let workspacePersistence = WorkspacePersistence()
 let persistedState = workspacePersistence.loadState()
 let workspaces = DaemonWorkspaces(assignments: persistedState.assignments, activeWorkspace: persistedState.activeWorkspace, trees: persistedState.trees ?? [:], layouts: persistedState.layouts ?? [:])
@@ -258,7 +258,7 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         updateFocusBorder(store: store, config: updatedConfiguration, workspaces: workspaces.value)
         focusFollowsMouse.setEnabled(updatedConfiguration.focusFollowsMouse)
         client.updateRules(configuration.value.rules)
-        client.updateBarPosition(configuration.value.barPosition)
+        client.updateBar(position: configuration.value.barPosition, thickness: configuration.value.barThickness)
         for window in managedWindows(client) {
             store.upsert(window)
             workspaces.value.register(window, rules: configuration.value.rules, defaultWorkspace: workspaces.value.activeWorkspace)
@@ -629,7 +629,10 @@ private func notifyBar(store: WindowStore, workspace: Int, layout: String, posit
     DistributedNotificationCenter.default().post(
         name: stateNotification,
         object: nil,
-        userInfo: ["workspace": workspace, "layout": layout, "position": position.rawValue, "windows": counts, "mode": keybinds.mode]
+        userInfo: [
+            "workspace": workspace, "layout": layout, "position": position.rawValue, "windows": counts, "mode": keybinds.mode,
+            "focusedApp": store.focusedWindow?.appName ?? "", "focusedTitle": store.focusedWindow?.title ?? ""
+        ]
     )
     guard let events, let workspaces else { return }
     events.broadcast(StateJSON.encode(StateEvent(event: "state", state: StateSnapshot(store: store, workspaces: workspaces, layout: layout, mode: keybinds.mode))))

@@ -7,6 +7,7 @@ import MacWMCore
 final class AXClient: @unchecked Sendable {
     private var rules: [WindowRule]
     private var barPosition: BarPosition
+    private var barThickness: Double
 
     /// Calls into applications that stopped answering, games and iOS apps
     /// under load, fail after this instead of the six second default.
@@ -15,9 +16,10 @@ final class AXClient: @unchecked Sendable {
     private let queuesLock = NSLock()
     private var queues: [pid_t: DispatchQueue] = [:]
 
-    init(rules: [WindowRule] = [], barPosition: BarPosition = .top) {
+    init(rules: [WindowRule] = [], barPosition: BarPosition = .top, barThickness: Double = BarPosition.top.thickness) {
         self.rules = rules
         self.barPosition = barPosition
+        self.barThickness = barThickness
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), Self.messagingTimeout)
     }
 
@@ -41,8 +43,9 @@ final class AXClient: @unchecked Sendable {
         }
     }
 
-    func updateBarPosition(_ position: BarPosition) {
+    func updateBar(position: BarPosition, thickness: Double) {
         barPosition = position
+        barThickness = thickness
     }
 
     func updateRules(_ rules: [WindowRule]) {
@@ -312,14 +315,14 @@ final class AXClient: @unchecked Sendable {
     /// Visible area (without menu bar and Dock) of the screen holding the window, in Accessibility coordinates.
     func visibleScreenFrame(for window: ManagedWindow) -> Frame? {
         guard let currentFrame = window.frame, let screen = screen(for: currentFrame) else { return nil }
-        return accessibilityFrame(for: screen.visibleFrame).reserving(bar: barPosition, screen: accessibilityFrame(for: screen.frame))
+        return accessibilityFrame(for: screen.visibleFrame).reserving(bar: barPosition, screen: accessibilityFrame(for: screen.frame), thickness: barThickness)
     }
 
     /// Visible area of the primary screen in Accessibility coordinates, the
     /// frame every layout is computed in.
     func layoutFrame() -> Frame? {
         guard let screen = NSScreen.screens.first else { return nil }
-        return accessibilityFrame(for: screen.visibleFrame).reserving(bar: barPosition, screen: accessibilityFrame(for: screen.frame))
+        return accessibilityFrame(for: screen.visibleFrame).reserving(bar: barPosition, screen: accessibilityFrame(for: screen.frame), thickness: barThickness)
     }
 
     /// Full frame of the screen holding the window, in Accessibility coordinates.

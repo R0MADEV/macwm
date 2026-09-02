@@ -11,6 +11,7 @@ private func richConfig() -> Config {
     config.hotkeys["focus_left"] = "ctrl+h"
     config.cursorWarp = false
     config.border = BorderOptions(enabled: true, width: 2, color: "#ff8800")
+    config.bar = BarOptions(height: 30, fontSize: 12, accent: "#112233", opacity: 0.5, hideEmptyWorkspaces: true, left: ["workspaces"], center: [], right: ["clock"])
     config.binds = ["default": ["alt+q": "close"], "resize": ["h": "resize shrink", "escape": "mode default"]]
     return config
 }

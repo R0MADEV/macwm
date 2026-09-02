@@ -14,6 +14,7 @@ public struct Config: Equatable, Sendable {
     public var cursorWarp: Bool
     public var master: MasterOptions
     public var border: BorderOptions
+    public var bar: BarOptions
     /// Name to command line, run through the login shell once when the daemon starts.
     public var autostart: [String: String]
     public var rules: [WindowRule]
@@ -23,7 +24,7 @@ public struct Config: Equatable, Sendable {
     /// Scratchpad name to bundle identifier, from `[scratchpads]`.
     public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), border: BorderOptions = BorderOptions(), autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), border: BorderOptions = BorderOptions(), bar: BarOptions = BarOptions(), autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
@@ -35,6 +36,7 @@ public struct Config: Equatable, Sendable {
         self.cursorWarp = cursorWarp
         self.master = master
         self.border = border
+        self.bar = bar
         self.autostart = autostart
         self.rules = rules
         self.hotkeys = hotkeys
@@ -49,6 +51,11 @@ public struct Config: Equatable, Sendable {
         "workspace_4": "alt+4", "workspace_5": "alt+5", "workspace_6": "alt+6", "workspace_7": "alt+7",
         "workspace_8": "alt+8", "workspace_9": "alt+9"
     ]
+
+    /// Points the bar takes along its edge: its height, or a fixed width when vertical.
+    public var barThickness: Double {
+        barPosition.isVertical ? BarOptions.verticalThickness : bar.height
+    }
 
     /// Applications macwm never tiles, parks or hides: the terminal and every scratchpad.
     public var unmanagedBundleIdentifiers: Set<String> {
@@ -159,6 +166,25 @@ public struct Config: Equatable, Sendable {
             case "bar.position":
                 guard let position = BarPosition(rawValue: unquoted(value)) else { return nil }
                 config.barPosition = position
+            case "bar.height":
+                guard let height = nonNegativeDouble(value), height >= 20 else { return nil }
+                config.bar.height = height
+            case "bar.font_size":
+                guard let size = nonNegativeDouble(value), size >= 8 else { return nil }
+                config.bar.fontSize = size
+            case "bar.accent":
+                let accent = unquoted(value)
+                guard BorderOptions.isValidColor(accent) else { return nil }
+                config.bar.accent = accent
+            case "bar.opacity":
+                guard let opacity = Double(value), (0...1).contains(opacity) else { return nil }
+                config.bar.opacity = opacity
+            case "bar.hide_empty_workspaces":
+                guard let hide = Bool(value) else { return nil }
+                config.bar.hideEmptyWorkspaces = hide
+            case "bar.left", "bar.center", "bar.right":
+                guard let modules = stringArray(value), BarOptions.isValidModuleList(modules) else { return nil }
+                if key == "left" { config.bar.left = modules } else if key == "center" { config.bar.center = modules } else { config.bar.right = modules }
             case "terminal.bundle_id":
                 let bundleIdentifier = unquoted(value)
                 guard isValidBundleIdentifier(bundleIdentifier) else { return nil }
@@ -224,6 +250,20 @@ public struct Config: Equatable, Sendable {
 private func unquoted(_ value: String) -> String {
     guard value.count >= 2, value.first == "\"", value.last == "\"" else { return value }
     return String(value.dropFirst().dropLast())
+}
+
+/// `["a", "b"]` as written in TOML; nil when the brackets or quotes are wrong.
+private func stringArray(_ value: String) -> [String]? {
+    guard value.hasPrefix("["), value.hasSuffix("]") else { return nil }
+    let inner = value.dropFirst().dropLast().trimmingCharacters(in: .whitespaces)
+    guard !inner.isEmpty else { return [] }
+    var items: [String] = []
+    for part in inner.split(separator: ",") {
+        let item = part.trimmingCharacters(in: .whitespaces)
+        guard item.count >= 2, item.hasPrefix("\""), item.hasSuffix("\"") else { return nil }
+        items.append(unquoted(item))
+    }
+    return items
 }
 
 private func isValidBundleIdentifier(_ value: String) -> Bool {

@@ -94,7 +94,12 @@ public extension Config {
         lines.append(contentsOf: ["", "[display]", "outer_gap = \(number(outerGap))", "inner_gap = \(number(innerGap))"])
         lines.append(contentsOf: ["", "[master]", "orientation = \"\(master.orientation.rawValue)\"", "ratio = \(master.ratio)", "count = \(master.count)"])
         lines.append(contentsOf: ["", "[border]", "enabled = \(border.enabled)", "width = \(number(border.width))", "color = \"\(border.color)\""])
-        lines.append(contentsOf: ["", "[bar]", "position = \"\(barPosition.rawValue)\""])
+        let list = { (modules: [String]) in "[" + modules.map { "\"\($0)\"" }.joined(separator: ", ") + "]" }
+        lines.append(contentsOf: [
+            "", "[bar]", "position = \"\(barPosition.rawValue)\"", "height = \(number(bar.height))", "font_size = \(number(bar.fontSize))",
+            "accent = \"\(bar.accent)\"", "opacity = \(bar.opacity)", "hide_empty_workspaces = \(bar.hideEmptyWorkspaces)",
+            "left = \(list(bar.left))", "center = \(list(bar.center))", "right = \(list(bar.right))"
+        ])
         lines.append(contentsOf: ["", "[terminal]", "bundle_id = \"\(terminalBundleIdentifier)\""])
         lines.append(contentsOf: ["", "[keys]"])
         for name in (LegacyHotkeys.simple.map(\.name) + LegacyHotkeys.paired.map(\.name)) {

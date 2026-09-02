@@ -80,6 +80,27 @@ public enum HyprlandConfig {
             case ("master", "mfact"):
                 guard let ratio = Double(value), (0.1...0.9).contains(ratio) else { return nil }
                 config.master.ratio = ratio
+            case ("bar", "position"):
+                guard let position = BarPosition(rawValue: value) else { return nil }
+                config.barPosition = position
+            case ("bar", "height"):
+                guard let height = Double(value), height >= 20 else { return nil }
+                config.bar.height = height
+            case ("bar", "font_size"):
+                guard let size = Double(value), size >= 8 else { return nil }
+                config.bar.fontSize = size
+            case ("bar", "accent"):
+                guard let color = translateColor(value) else { return nil }
+                config.bar.accent = color
+            case ("bar", "opacity"):
+                guard let opacity = Double(value), (0...1).contains(opacity) else { return nil }
+                config.bar.opacity = opacity
+            case ("bar", "hide_empty_workspaces"):
+                config.bar.hideEmptyWorkspaces = isTruthy(value)
+            case ("bar", "left"), ("bar", "center"), ("bar", "right"):
+                let modules = value.split(separator: " ").map(String.init)
+                guard BarOptions.isValidModuleList(modules) else { return nil }
+                if key == "left" { config.bar.left = modules } else if key == "center" { config.bar.center = modules } else { config.bar.right = modules }
             case ("cursor", "no_warps"):
                 config.cursorWarp = !isTruthy(value)
             case ("input", "follow_mouse"):

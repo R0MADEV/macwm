@@ -127,3 +127,29 @@ func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
     #expect(hyprland?.border == BorderOptions(enabled: true, width: 2, color: "#33ccffee"))
     #expect(HyprlandConfig.parse("general {\n col.active_border = rgb(ff0000) rgb(00ff00) 45deg\n}")?.border.color == "#ff0000")
 }
+
+@Test func parsesBarOptions() {
+    let config = Config.parse("""
+    [bar]
+    position = "bottom"
+    height = 30
+    font_size = 12
+    accent = "#ff8800"
+    opacity = 0.6
+    hide_empty_workspaces = true
+    left = ["workspaces"]
+    center = []
+    right = ["clock", "settings"]
+    """)
+
+    #expect(config?.bar == BarOptions(height: 30, fontSize: 12, accent: "#ff8800", opacity: 0.6, hideEmptyWorkspaces: true, left: ["workspaces"], center: [], right: ["clock", "settings"]))
+    #expect(Config().bar.left == ["workspaces", "layout"])
+    #expect(Config().barThickness == 34)
+    #expect(config?.barThickness == 30)
+    #expect(Config.parse("[bar]\nleft = [\"nosuchmodule\"]") == nil)
+    #expect(Config.parse("[bar]\nopacity = 2") == nil)
+    let hyprland = HyprlandConfig.parse("bar {\n height = 28\n right = clock settings\n accent = rgb(112233)\n}")
+    #expect(hyprland?.bar.height == 28)
+    #expect(hyprland?.bar.right == ["clock", "settings"])
+    #expect(hyprland?.bar.accent == "#112233")
+}

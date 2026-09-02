@@ -20,8 +20,8 @@ public extension BarPosition {
 public extension Frame {
     /// The visible area minus whatever part of the bar lies inside it. The bar
     /// hugs the screen edge, so a top bar hidden behind the menu bar costs nothing.
-    func reserving(bar position: BarPosition, screen: Frame) -> Frame {
-        let thickness = position.thickness
+    func reserving(bar position: BarPosition, screen: Frame, thickness: Double? = nil) -> Frame {
+        let thickness = thickness ?? position.thickness
         switch position {
         case .top:
             let barBottom = screen.y + thickness
