@@ -17,6 +17,7 @@ final class AgentsMonitor {
     }
 
     private static let agents = ["claude", "codex", "opencode"]
+    private static let staleAfter: [String: TimeInterval] = ["claude": 3600, "codex": 7 * 86400, "opencode": 86400]
     private var cpuTimes: [pid_t: UInt64] = [:]
     private var codexCache: (path: String, modified: Date, record: AgentStatus?)?
 
@@ -26,7 +27,9 @@ final class AgentsMonitor {
         var result: [Summary] = []
         for agent in Self.agents {
             let pids = processes.filter { $0.name == agent }.map(\.pid)
-            let records = self.records(for: agent)
+            // Old records are only worth showing while the agent runs: a weekly
+            // limit read from a two-month-old Codex session would mislead.
+            let records = self.records(for: agent).filter { pids.isEmpty ? Date().timeIntervalSince($0.updatedAt) < Self.staleAfter[agent, default: 3600] : true }
             guard !pids.isEmpty || !records.isEmpty else { continue }
             let isWorking = pids.contains { working.contains($0) }
             let (line, details) = describe(agent: agent, sessions: pids.count, records: records)
