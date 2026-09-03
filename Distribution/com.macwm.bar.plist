@@ -8,6 +8,10 @@
     <array>
         <string>__MACWM_BAR__</string>
     </array>
+    <key>StandardOutPath</key>
+    <string>/tmp/macwm-bar.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/macwm-bar.log</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

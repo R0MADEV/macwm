@@ -183,6 +183,7 @@ final class AgentsModule: BarModule {
     private let theme: BarTheme
     private var pills: [String: PillView] = [:]
     private var popover: NSPopover?
+    private var presence = FlickerGuard()
 
     init(theme: BarTheme) {
         self.theme = theme
@@ -192,13 +193,14 @@ final class AgentsModule: BarModule {
     }
 
     func update(_ state: BarState) {
-        let names = Set(state.agents.map(\.agent))
-        for (name, pill) in pills where !names.contains(name) {
+        let summaries = Dictionary(state.agents.map { ($0.agent, $0) }, uniquingKeysWith: { first, _ in first })
+        let visible = presence.observe(Set(summaries.keys))
+        for (name, pill) in pills where !visible.contains(name) {
             stack.removeArrangedSubview(pill)
             pill.removeFromSuperview()
             pills.removeValue(forKey: name)
         }
-        for summary in state.agents {
+        for summary in visible.compactMap({ summaries[$0] }) {
             let pill = pills[summary.agent] ?? makePill(for: summary)
             let plan = summary.line.components(separatedBy: "plan ").dropFirst().first.flatMap { Int($0.prefix { $0.isNumber }) }
             pill.label.stringValue = theme.isVertical ? Self.compactLine(summary, plan: plan) : (summary.isWorking ? "● " : "○ ") + summary.line
@@ -211,7 +213,7 @@ final class AgentsModule: BarModule {
                 self.showDetails(summary.details, title: summary.line, relativeTo: pill)
             }
         }
-        view.isHidden = state.agents.isEmpty
+        view.isHidden = visible.isEmpty
     }
 
     /// "●max\n19%": the account or agent tag and the plan usage, for a narrow column.
