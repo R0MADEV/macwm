@@ -101,7 +101,7 @@ public extension Config {
             "accent = \"\(bar.accent)\"", "opacity = \(bar.opacity)", "hide_empty_workspaces = \(bar.hideEmptyWorkspaces)",
             "left = \(list(bar.left))", "center = \(list(bar.center))", "right = \(list(bar.right))"
         ])
-        lines.append(contentsOf: ["", "[terminal]", "bundle_id = \"\(terminalBundleIdentifier)\""])
+        lines.append(contentsOf: ["", "[terminal]", "bundle_id = \"\(terminalBundleIdentifier)\"", "height = \(number(terminalHeightPercent))"])
         lines.append(contentsOf: ["", "[keys]"])
         for name in (LegacyHotkeys.simple.map(\.name) + LegacyHotkeys.paired.map(\.name)) {
             lines.append("\(name) = \"\(hotkeys[name] ?? "none")\"")

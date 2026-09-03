@@ -397,11 +397,11 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, floating: store.persistedFloating)
         return "ok"
     case .toggleTerminal:
-        ScratchpadController(client: client, bundleIdentifier: configuration.value.terminalBundleIdentifier, fillsScreen: true).toggle()
+        ScratchpadController(client: client, bundleIdentifier: configuration.value.terminalBundleIdentifier, screenShare: configuration.value.terminalHeightPercent).toggle()
         return "ok"
     case let .scratchpad(name):
         let bundleIdentifier = configuration.value.scratchpads[name] ?? name
-        ScratchpadController(client: client, bundleIdentifier: bundleIdentifier, fillsScreen: false).toggle()
+        ScratchpadController(client: client, bundleIdentifier: bundleIdentifier, screenShare: nil).toggle()
         return "ok"
     case .close:
         guard let focusedWindow = store.focusedWindow else { return "error: no focused window" }

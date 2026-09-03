@@ -8,12 +8,13 @@ import MacWMCore
 final class ScratchpadController: @unchecked Sendable {
     private let client: AXClient
     private let bundleIdentifier: String
-    private let fillsScreen: Bool
+    /// Share of the screen the window drops down over when shown; nil keeps its own size.
+    private let screenShare: Double?
 
-    init(client: AXClient, bundleIdentifier: String, fillsScreen: Bool) {
+    init(client: AXClient, bundleIdentifier: String, screenShare: Double?) {
         self.client = client
         self.bundleIdentifier = bundleIdentifier
-        self.fillsScreen = fillsScreen
+        self.screenShare = screenShare
     }
 
     func toggle() {
@@ -38,10 +39,13 @@ final class ScratchpadController: @unchecked Sendable {
             application.activate(options: [.activateIgnoringOtherApps])
             return
         }
-        if client.isMinimized(window) {
-            restore(application)
-        } else {
+        // Quake style: bring it forward and frame it unless it is already the
+        // frontmost window, in which case hide it.
+        let isInFront = !client.isMinimized(window) && !application.isHidden && NSWorkspace.shared.frontmostApplication?.processIdentifier == application.processIdentifier
+        if isInFront {
             _ = client.setHidden(true, for: window)
+        } else {
+            restore(application)
         }
     }
 
@@ -54,9 +58,17 @@ final class ScratchpadController: @unchecked Sendable {
         // Read the restored window again so the frame uses its current screen
         // instead of the pre-restore snapshot.
         guard let restoredWindow = client.windows(for: application).first, let element = client.element(for: restoredWindow) else { return }
-        if fillsScreen, let frame = client.screenFrame(for: restoredWindow) {
+        if let screenShare, let frame = dropDownFrame(for: restoredWindow, share: screenShare) {
             _ = client.setFrame(frame, for: restoredWindow)
         }
         _ = client.focus(element)
+    }
+
+    /// The whole screen at 100%; below that, the top part of the visible area,
+    /// under the bar and the menu bar, like a drop-down terminal.
+    private func dropDownFrame(for window: ManagedWindow, share: Double) -> Frame? {
+        if share >= 100 { return client.screenFrame(for: window) }
+        guard let visible = client.visibleScreenFrame(for: window) else { return nil }
+        return Frame(x: visible.x, y: visible.y, width: visible.width, height: (visible.height * share / 100).rounded())
     }
 }

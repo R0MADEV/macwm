@@ -9,7 +9,7 @@ It is designed for local use: no account, network service, telemetry, Electron, 
 The recommended installer is the PKG:
 
 ```text
-macwm-0.1.0-arm64.pkg
+macwm-0.2.0-arm64.pkg
 ```
 
 It installs:
@@ -161,7 +161,7 @@ Several Claude accounts, each launched with its own `CLAUDE_CONFIG_DIR`, get one
 Build a visual installer:
 
 ```bash
-VERSION=0.1.0 sh scripts/package-dmg.sh
+VERSION=0.2.0 sh scripts/package-dmg.sh
 ```
 
 The DMG contains the complete PKG installer as well as the applications. Dragging the apps installs only the applications; double-click the included PKG to install the CLI and LaunchAgents too.
@@ -169,7 +169,7 @@ The DMG contains the complete PKG installer as well as the applications. Draggin
 Build a native macOS package installer:
 
 ```bash
-VERSION=0.1.0 sh scripts/package-pkg.sh
+VERSION=0.2.0 sh scripts/package-pkg.sh
 ```
 
 The generated files are placed in `dist/` and are ignored by Git. Sign the applications and package before public distribution.
@@ -338,6 +338,7 @@ The global terminal toggle works with any installed terminal application. Config
 ```toml
 [terminal]
 bundle_id = "com.googlecode.iterm2"
+height = 100   # percent of the visible screen height; 60 gives a Quake-style drop-down
 ```
 
 Available examples:
@@ -351,7 +352,7 @@ Alacritty     org.alacritty
 
 `terminal_toggle` defaults to `grave` (the backtick key) and is registered globally without modifiers. Change it under `[keys]`, for example `terminal_toggle = "ctrl+grave"`, or run `macwm toggle-terminal`.
 
-The toggle launches the terminal when it is not running, minimizes its visible window, and restores, activates and resizes a minimized or hidden window to cover the whole current screen. The terminal is excluded from workspace assignments, hiding and tiling, so macwm never moves or hides it during workspace changes. macOS provides no public API to keep another application's window always on top or visible on every Space; this limitation cannot be removed without private APIs.
+The toggle launches the terminal when it is not running, brings it to the front and frames it when it is not the frontmost window, and hides it when it is: one key press always gives you a terminal in place, even after you moved or resized it by hand. At `height = 100` it covers the whole screen; lower values drop it down from the top over that share of the visible area. The terminal is excluded from workspace assignments, hiding and tiling, so macwm never moves or hides it during workspace changes. macOS provides no public API to keep another application's window always on top or visible on every Space; this limitation cannot be removed without private APIs.
 
 ### Mouse
 

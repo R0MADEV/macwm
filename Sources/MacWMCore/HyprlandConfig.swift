@@ -77,6 +77,9 @@ public enum HyprlandConfig {
                 guard let color = translateColor(value) else { return nil }
                 config.border.color = color
                 config.border.enabled = true
+            case ("general", "terminal_height"):
+                guard let height = Double(value), (1...100).contains(height) else { return nil }
+                config.terminalHeightPercent = height
             case ("general", "hide_mode"):
                 guard let mode = HideMode(rawValue: value) else { return nil }
                 config.hideMode = mode

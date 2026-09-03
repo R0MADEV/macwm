@@ -175,3 +175,11 @@ func parsesTerminalBundleIdentifierAndRejectsInvalidValues() {
     #expect(hyprland?.hideMode == .minimize)
     #expect(hyprland?.workspaceLayouts == [2: .masterStack])
 }
+
+@Test func parsesTerminalHeight() {
+    #expect(Config().terminalHeightPercent == 100)
+    #expect(Config.parse("[terminal]\nheight = 60")?.terminalHeightPercent == 60)
+    #expect(Config.parse("[terminal]\nheight = 0") == nil)
+    #expect(Config.parse("[terminal]\nheight = 120") == nil)
+    #expect(HyprlandConfig.parse("general {\n terminal_height = 55\n}")?.terminalHeightPercent == 55)
+}

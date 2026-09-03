@@ -14,6 +14,8 @@ public struct Config: Equatable, Sendable {
     public var layout: LayoutKind
     public var barPosition: BarPosition
     public var terminalBundleIdentifier: String
+    /// Share of the visible screen height the terminal drops down over; 100 covers the whole screen.
+    public var terminalHeightPercent: Double
     public var autoTile: Bool
     public var focusFollowsMouse: Bool
     /// No gaps at all when a workspace shows a single tiled window.
@@ -35,10 +37,11 @@ public struct Config: Equatable, Sendable {
     /// Scratchpad name to bundle identifier, from `[scratchpads]`.
     public var scratchpads: [String: String]
 
-    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), border: BorderOptions = BorderOptions(), bar: BarOptions = BarOptions(), hideMode: HideMode = .park, workspaceLayouts: [Int: LayoutKind] = [:], autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
+    public init(layout: LayoutKind = .bsp, outerGap: Double = 8, innerGap: Double = 8, autoTile: Bool = true, focusFollowsMouse: Bool = false, smartGaps: Bool = false, cursorWarp: Bool = true, master: MasterOptions = MasterOptions(), border: BorderOptions = BorderOptions(), bar: BarOptions = BarOptions(), hideMode: HideMode = .park, workspaceLayouts: [Int: LayoutKind] = [:], autostart: [String: String] = [:], barPosition: BarPosition = .top, terminalBundleIdentifier: String = "com.googlecode.iterm2", terminalHeightPercent: Double = 100, rules: [WindowRule] = [], hotkeys: [String: String] = Config.defaultHotkeys, binds: [String: [String: String]] = [:], scratchpads: [String: String] = [:]) {
         self.layout = layout
         self.barPosition = barPosition
         self.terminalBundleIdentifier = terminalBundleIdentifier
+        self.terminalHeightPercent = min(max(terminalHeightPercent, 1), 100)
         self.outerGap = outerGap
         self.innerGap = innerGap
         self.autoTile = autoTile
@@ -221,6 +224,9 @@ public struct Config: Equatable, Sendable {
             case "general.auto_tile":
                 guard let autoTile = Bool(value) else { return nil }
                 config.autoTile = autoTile
+            case "terminal.height":
+                guard let height = Double(value), (1...100).contains(height) else { return nil }
+                config.terminalHeightPercent = height
             case "general.hide_mode":
                 guard let mode = HideMode(rawValue: unquoted(value)) else { return nil }
                 config.hideMode = mode
