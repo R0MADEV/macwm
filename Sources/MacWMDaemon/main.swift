@@ -48,6 +48,8 @@ let layoutGuard = LayoutGuard()
 var store = WindowStore()
 var maximizedFrames: [WindowID: Frame] = [:]
 let parkedFrames = ParkedFrames()
+/// When the last workspace switch happened; focus stolen by a parked window right after it is not the user's doing.
+let lastWorkspaceSwitch = LastSwitch()
 let socketPath = "/tmp/macwm.sock"
 let eventsSocketPath = "/tmp/macwm-events.sock"
 let events = UnixSocketBroadcaster(path: eventsSocketPath)
@@ -120,6 +122,14 @@ let observerRegistry = AXObserverRegistry { processID, event in
             notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
             let windowWorkspace = workspaces.value.workspace(for: window.id)
             guard windowWorkspace != workspaces.value.activeWorkspace else { return }
+            // Some apps, WhatsApp among them, re-take focus right after their window
+            // is parked. Following that would bounce back to the workspace just left;
+            // instead the focus returns to the workspace the user chose.
+            if lastWorkspaceSwitch.secondsAgo < 1.5 {
+                print("macwm: ignoring focus stolen by parked \(window.appName) right after a switch")
+                focusLastWindow(in: workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces, warpCursor: false)
+                return
+            }
             _ = switchWorkspace(windowWorkspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: runtimeConfiguration.value)
         case .windowDestroyed(let element):
             guard !layoutGuard.isApplying else { return }
@@ -534,6 +544,7 @@ private func switchWorkspace(
             notifyBar(store: store, workspace: workspace, layout: workspaces.value.layout(for: workspace, default: config.defaultLayout(for: workspace)).rawValue, position: config.barPosition, workspaces: workspaces.value)
 
     let started = DispatchTime.now().uptimeNanoseconds
+    lastWorkspaceSwitch.nanoseconds = started
     showWorkspaceWindows(workspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
     let parked = DispatchTime.now().uptimeNanoseconds
     applyTiling(client: client, store: &store, config: config, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
