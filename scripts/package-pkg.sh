@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-VERSION=${VERSION:-0.1.0}
+VERSION=${VERSION:-0.2.0}
 OUT=${OUT:-"$ROOT/dist"}
 NAME="macwm-$VERSION-arm64"
 PAYLOAD="$OUT/.pkg-payload"
@@ -38,10 +38,19 @@ if [ ! -f "\$CONSOLE_HOME/.config/macwm/config.toml" ]; then
 fi
 chown "\$CONSOLE_USER" "\$LAUNCH_AGENTS/com.macwm.daemon.plist" "\$LAUNCH_AGENTS/com.macwm.bar.plist"
 plutil -lint "\$LAUNCH_AGENTS/com.macwm.daemon.plist" "\$LAUNCH_AGENTS/com.macwm.bar.plist" >/dev/null
-launchctl bootout "gui/\$CONSOLE_UID"/com.macwm.daemon 2>/dev/null || true
-launchctl bootout "gui/\$CONSOLE_UID"/com.macwm.bar 2>/dev/null || true
-launchctl bootstrap "gui/\$CONSOLE_UID" "\$LAUNCH_AGENTS/com.macwm.daemon.plist"
-launchctl bootstrap "gui/\$CONSOLE_UID" "\$LAUNCH_AGENTS/com.macwm.bar.plist"
+# bootout returns before the service is gone; bootstrapping too early fails.
+unload() {
+  launchctl bootout "gui/\$CONSOLE_UID/\$1" 2>/dev/null || true
+  for _ in \$(seq 1 50); do
+    launchctl print "gui/\$CONSOLE_UID/\$1" >/dev/null 2>&1 || return 0
+    sleep 0.1
+  done
+}
+unload com.macwm.daemon
+unload com.macwm.bar
+# Run the agents as the console user; the installer itself runs as root.
+launchctl asuser "\$CONSOLE_UID" launchctl bootstrap "gui/\$CONSOLE_UID" "\$LAUNCH_AGENTS/com.macwm.daemon.plist" || true
+launchctl asuser "\$CONSOLE_UID" launchctl bootstrap "gui/\$CONSOLE_UID" "\$LAUNCH_AGENTS/com.macwm.bar.plist" || true
 EOF
 chmod 755 "$SCRIPTS/postinstall"
 
