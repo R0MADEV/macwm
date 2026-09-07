@@ -50,6 +50,10 @@ var maximizedFrames: [WindowID: Frame] = [:]
 let parkedFrames = ParkedFrames()
 /// When the last workspace switch happened; focus stolen by a parked window right after it is not the user's doing.
 let lastWorkspaceSwitch = LastSwitch()
+/// Windows closed while a tiling pass was in progress: the destroy notification
+/// arrived reentrantly (AX calls can pump the run loop) and mutating the store
+/// mid-pass is unsafe, so removal waits until the pass finishes.
+var pendingWindowRemovals: Set<WindowID> = []
 let socketPath = "/tmp/macwm.sock"
 let eventsSocketPath = "/tmp/macwm-events.sock"
 let events = UnixSocketBroadcaster(path: eventsSocketPath)
@@ -132,15 +136,18 @@ let observerRegistry = AXObserverRegistry { processID, event in
             }
             _ = switchWorkspace(windowWorkspace, client: client, store: &store, maximizedFrames: maximizedFrames, workspaces: workspaces, config: runtimeConfiguration.value)
         case .windowDestroyed(let element):
-            guard !layoutGuard.isApplying else { return }
             let id = WindowID(processID: UInt32(application.processIdentifier), elementHash: Int(truncatingIfNeeded: CFHash(element)))
-            store.remove(id)
-            maximizedFrames.removeValue(forKey: id)
-            parkedFrames.value.removeValue(forKey: id)
-            workspaces.value.remove(id)
-            applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
-            workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
-            notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+            // AX calls can pump the run loop, so this notification sometimes
+            // arrives while a tiling pass higher up the call stack is still
+            // iterating the store; mutating it here would race that pass.
+            // The removal is queued and drained as soon as the pass finishes,
+            // instead of being dropped, so a window closed on a workspace that
+            // is not being tiled right now is not left as a ghost forever.
+            guard !layoutGuard.isApplying else {
+                pendingWindowRemovals.insert(id)
+                return
+            }
+            removeWindow(id)
             print("macwm: tracking \(store.windows.count) windows")
         case .windowCreated(_):
             guard !layoutGuard.isApplying else { return }
@@ -603,6 +610,30 @@ private func activeWorkspaceWindowIDs(store: WindowStore, workspaces: WorkspaceM
     return Set(ids).subtracting(workspaces.hiddenGroupMembers(among: ids))
 }
 
+/// Drops a closed window from every piece of state that tracks it, then
+/// re-tiles. Shared by the destroy handler and the queue it defers to while
+/// a tiling pass is in progress.
+@MainActor
+private func removeWindow(_ id: WindowID) {
+    store.remove(id)
+    maximizedFrames.removeValue(forKey: id)
+    parkedFrames.value.removeValue(forKey: id)
+    workspaces.value.remove(id)
+    applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
+    workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspaces.value.activeWorkspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+    notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+}
+
+/// Removes windows that were closed while a tiling pass could not safely be
+/// interrupted to handle them.
+@MainActor
+private func drainPendingWindowRemovals() {
+    guard !pendingWindowRemovals.isEmpty else { return }
+    let ids = pendingWindowRemovals
+    pendingWindowRemovals.removeAll()
+    for id in ids { removeWindow(id) }
+}
+
 /// Runs a command line through the user's login shell so PATH and profile
 /// match an interactive terminal instead of launchd's minimal environment.
 private func launch(_ commandLine: String) {
@@ -622,7 +653,10 @@ private func launch(_ commandLine: String) {
 /// switch is instant and never animates through the Dock.
 private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: inout WindowStore, workspaces: WorkspaceManager, maximizedFrames: [WindowID: Frame]) {
     layoutGuard.isApplying = true
-    defer { layoutGuard.isApplying = false }
+    defer {
+        layoutGuard.isApplying = false
+        MainActor.assumeIsolated { drainPendingWindowRemovals() }
+    }
     if runtimeConfiguration.value.hideMode == .minimize {
         // Classic hiding: minimize to the Dock; the deminiaturize events re-tile.
         for window in store.windows {
@@ -734,7 +768,10 @@ private func notifyBar(store: WindowStore, workspace: Int, layout: String, posit
 private func applyTiling(client: AXClient, store: inout WindowStore, config: Config, workspaces: inout WorkspaceManager, maximizedFrames: [WindowID: Frame], force: Bool = false) {
     guard !layoutGuard.isApplying else { return }
     layoutGuard.isApplying = true
-    defer { layoutGuard.isApplying = false }
+    defer {
+        layoutGuard.isApplying = false
+        MainActor.assumeIsolated { drainPendingWindowRemovals() }
+    }
     mouseTargets.update(store.windows.filter { window in
         !window.isHidden && workspaces.workspace(for: window.id) == workspaces.activeWorkspace
     })

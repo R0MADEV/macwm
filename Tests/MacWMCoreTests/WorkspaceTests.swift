@@ -117,3 +117,17 @@ import Testing
     manager.activate(5)
     #expect(manager.previousWorkspace == 3)
 }
+
+@Test func removingAPlainWindowPrunesItFromTheLayoutTree() {
+    let first = ManagedWindow(id: WindowID(1), processID: 10, title: "A", bundleIdentifier: "com.example.App")
+    let second = ManagedWindow(id: WindowID(2), processID: 10, title: "B", bundleIdentifier: "com.example.App")
+    var manager = WorkspaceManager()
+    manager.register(first, rules: [])
+    manager.register(second, rules: [])
+    _ = manager.validatedLayoutTree(for: [first.id, second.id], in: 1)
+
+    manager.remove(first.id)
+
+    #expect(manager.storedLayoutTree(for: 1)?.windowIDs.contains(first.id) == false)
+    #expect(manager.windows(in: 1) == [second.id])
+}

@@ -270,8 +270,12 @@ public struct WorkspaceManager: Sendable {
     }
 
     public mutating func remove(_ windowID: WindowID) {
-        if let workspace = assignments[windowID], let promoted = groups.remove(windowID) {
-            trees[workspace] = trees[workspace]?.swapped(windowID, promoted)
+        if let workspace = assignments[windowID] {
+            if let promoted = groups.remove(windowID) {
+                trees[workspace] = trees[workspace]?.swapped(windowID, promoted)
+            } else {
+                trees[workspace] = trees[workspace]?.removing(windowID)
+            }
         }
         assignments.removeValue(forKey: windowID)
         guard let key = windowKeys.removeValue(forKey: windowID), keyOwners[key] == windowID else { return }
