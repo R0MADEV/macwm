@@ -179,74 +179,83 @@ final class WindowModule: BarModule {
 @MainActor
 final class AgentsModule: BarModule {
     let view: NSView
-    private let stack = NSStackView()
     private let theme: BarTheme
-    private var pills: [String: PillView] = [:]
-    private var popover: NSPopover?
+    private let pill: PillView
     private var presence = FlickerGuard()
+    private var lastKnown: [String: AgentsMonitor.Summary] = [:]
+    private var entries: [AgentsMonitor.Summary] = []
+    private var popover: NSPopover?
 
     init(theme: BarTheme) {
         self.theme = theme
-        stack.orientation = theme.isVertical ? .vertical : .horizontal
-        stack.spacing = 4
-        view = stack
+        pill = PillView(theme: theme, text: "agents")
+        view = pill
+        pill.onClick = { [weak self] in self?.toggleList() }
     }
 
     func update(_ state: BarState) {
-        let summaries = Dictionary(state.agents.map { ($0.agent, $0) }, uniquingKeysWith: { first, _ in first })
-        let visible = presence.observe(Set(summaries.keys))
-        for (name, pill) in pills where !visible.contains(name) {
-            stack.removeArrangedSubview(pill)
-            pill.removeFromSuperview()
-            pills.removeValue(forKey: name)
+        for summary in state.agents { lastKnown[summary.agent] = summary }
+        let visible = presence.observe(Set(state.agents.map(\.agent)))
+        entries = visible.compactMap { lastKnown[$0] }.sorted { $0.agent < $1.agent }
+        view.isHidden = entries.isEmpty
+        updateSummaryPill()
+        if popover?.isShown == true { renderList() }
+    }
+
+    /// The single collapsed pill: a working dot, how many agents, and the
+    /// worst plan usage among them driving its color, same as a single pill did before.
+    private func updateSummaryPill() {
+        let worstPlan = entries.compactMap(Self.planPercent).max()
+        pill.label.textColor = Self.tint(for: worstPlan, theme: theme)
+        pill.setFill(Self.fill(for: worstPlan, theme: theme))
+        let dot = entries.contains { $0.isWorking } ? "●" : "○"
+        pill.label.stringValue = theme.isVertical ? "\(dot)\nagents \(entries.count)" : "\(dot) agents (\(entries.count))"
+        pill.toolTip = entries.map(\.line).joined(separator: "\n")
+    }
+
+    private func toggleList() {
+        guard popover?.isShown != true else {
+            popover?.close()
+            return
         }
-        for summary in visible.compactMap({ summaries[$0] }) {
-            let pill = pills[summary.agent] ?? makePill(for: summary)
-            let plan = summary.line.components(separatedBy: "plan ").dropFirst().first.flatMap { Int($0.prefix { $0.isNumber }) }
-            pill.label.stringValue = theme.isVertical ? Self.compactLine(summary, plan: plan) : (summary.isWorking ? "● " : "○ ") + summary.line
-            let tint: NSColor = plan.map { $0 >= 90 ? theme.danger : ($0 >= 70 ? theme.warning : theme.primary) } ?? theme.primary
-            pill.label.textColor = tint
-            pill.setFill(plan.map { $0 >= 90 ? theme.danger.withAlphaComponent(0.25) : ($0 >= 70 ? theme.warning.withAlphaComponent(0.2) : theme.pill) } ?? theme.pill)
-            pill.toolTip = summary.details
-            pill.onClick = { [weak self, weak pill] in
-                guard let self, let pill else { return }
-                self.showDetails(summary.details, title: summary.line, relativeTo: pill)
-            }
+        renderList()
+    }
+
+    /// One row per agent, each carrying its own full detail as a hover tooltip.
+    private func renderList() {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        for summary in entries {
+            let row = PillView(theme: theme, text: (summary.isWorking ? "● " : "○ ") + summary.line)
+            row.toolTip = summary.details
+            let plan = Self.planPercent(summary)
+            row.label.textColor = Self.tint(for: plan, theme: theme)
+            row.setFill(Self.fill(for: plan, theme: theme))
+            stack.addArrangedSubview(row)
         }
-        view.isHidden = visible.isEmpty
-    }
-
-    /// "●max\n19%": the account or agent tag and the plan usage, for a narrow column.
-    private static func compactLine(_ summary: AgentsMonitor.Summary, plan: Int?) -> String {
-        let tags = ["claude-max": "max", "claude-pro": "pro", "claude": "cld", "codex": "cdx", "opencode": "oc"]
-        let tag = tags[summary.agent] ?? String(summary.agent.prefix(3))
-        let dot = summary.isWorking ? "●" : "○"
-        return plan.map { "\(dot)\(tag)\n\($0)%" } ?? "\(dot)\(tag)"
-    }
-
-    private func makePill(for summary: AgentsMonitor.Summary) -> PillView {
-        let pill = PillView(theme: theme, text: summary.line)
-        pill.label.maximumNumberOfLines = theme.isVertical ? 2 : 1
-        pills[summary.agent] = pill
-        stack.addArrangedSubview(pill)
-        return pill
-    }
-
-    private func showDetails(_ details: String, title: String, relativeTo anchor: NSView) {
-        popover?.close()
-        let popover = NSPopover()
-        popover.behavior = .transient
         let controller = NSViewController()
-        let text = NSTextField(wrappingLabelWithString: "\(title)\n\n\(details)")
-        text.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        text.preferredMaxLayoutWidth = 420
-        text.frame = NSRect(x: 12, y: 12, width: 420, height: text.intrinsicContentSize.height)
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 444, height: text.frame.height + 24))
-        container.addSubview(text)
-        controller.view = container
-        popover.contentViewController = controller
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: theme.isVertical ? .maxX : .minY)
-        self.popover = popover
+        controller.view = stack
+        let list = popover ?? NSPopover()
+        list.behavior = .transient
+        list.contentViewController = controller
+        popover = list
+        guard !list.isShown else { return }
+        list.show(relativeTo: pill.bounds, of: pill, preferredEdge: theme.isVertical ? .maxX : .minY)
+    }
+
+    private static func planPercent(_ summary: AgentsMonitor.Summary) -> Int? {
+        summary.line.components(separatedBy: "plan ").dropFirst().first.flatMap { Int($0.prefix { $0.isNumber }) }
+    }
+
+    private static func tint(for plan: Int?, theme: BarTheme) -> NSColor {
+        plan.map { $0 >= 90 ? theme.danger : ($0 >= 70 ? theme.warning : theme.primary) } ?? theme.primary
+    }
+
+    private static func fill(for plan: Int?, theme: BarTheme) -> NSColor {
+        plan.map { $0 >= 90 ? theme.danger.withAlphaComponent(0.25) : ($0 >= 70 ? theme.warning.withAlphaComponent(0.2) : theme.pill) } ?? theme.pill
     }
 }
 
