@@ -28,7 +28,7 @@ final class BarController: NSObject {
         super.init()
         configurePanel()
         buildContent()
-        readInitialState()
+        syncState()
         refreshMetrics()
         metricsTimer = Timer.scheduledTimer(timeInterval: 2, target: self, selector: #selector(refreshMetrics), userInfo: nil, repeats: true)
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(stateChanged(_:)), name: stateNotification, object: nil)
@@ -186,7 +186,11 @@ final class BarController: NSObject {
         panel.setFrame(frame, display: true)
     }
 
-    private func readInitialState() {
+    /// A distributed notification can be dropped by the system under load,
+    /// with no delivery guarantee and nothing to retry it; this is the fallback
+    /// that keeps the bar from drifting from the daemon's real workspace for
+    /// longer than one metrics tick when that happens.
+    private func syncState() {
         guard let response = client.send(.status) else { return }
         state.activeWorkspace = Self.value("workspace", from: response) ?? 1
         state.mode = Self.value("mode", from: response) ?? "default"
@@ -237,6 +241,7 @@ final class BarController: NSObject {
     }
 
     @objc private func refreshMetrics() {
+        syncState()
         let cpuTicks = SystemMetrics.cpuTicks()
         if let cpuTicks, let previousCPUTicks { state.cpu = SystemMetrics.cpuUsage(current: cpuTicks, previous: previousCPUTicks) }
         previousCPUTicks = cpuTicks

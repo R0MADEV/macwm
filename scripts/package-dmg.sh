@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-VERSION=${VERSION:-0.2.4}
+VERSION=${VERSION:-0.2.5}
 OUT=${OUT:-"$ROOT/dist"}
 NAME="macwm-$VERSION-arm64"
 STAGING="$OUT/.dmg-staging"
