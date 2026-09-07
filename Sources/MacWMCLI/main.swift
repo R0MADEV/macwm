@@ -5,8 +5,25 @@ import MacWMTransport
 let arguments = Array(CommandLine.arguments.dropFirst())
 
 guard let command = arguments.first else {
-    print("Usage: macwm <status|query|reload|layout|focus|move|resize|maximize|toggle-float|toggle-split|close|exec|mode|toggle-terminal|scratchpad|workspace|send-to-workspace> [value]")
+    print("Usage: macwm <status|query|reload|layout|focus|move|resize|maximize|toggle-float|toggle-split|close|exec|mode|toggle-terminal|scratchpad|workspace|send-to-workspace|restart> [value]")
     exit(EXIT_FAILURE)
+}
+
+// Kills and relaunches the daemon and the bar through launchd, for when
+// either gets stuck: a frozen bar showing a stale workspace, a daemon that
+// stopped responding. Goes straight to launchctl instead of the daemon's own
+// socket, since the daemon being unresponsive is exactly the case this must
+// still work in.
+if command == "restart" {
+    for label in ["com.macwm.daemon", "com.macwm.bar"] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["kickstart", "-k", "gui/\(getuid())/\(label)"]
+        try? process.run()
+        process.waitUntilExit()
+    }
+    print("macwm: restarted daemon and bar")
+    exit(EXIT_SUCCESS)
 }
 
 // `macwm agent-status claude` sits in Claude Code's status line pipeline: it
