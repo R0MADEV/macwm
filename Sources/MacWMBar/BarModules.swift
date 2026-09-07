@@ -236,6 +236,11 @@ final class AgentsModule: BarModule {
             row.setFill(Self.fill(for: plan, theme: theme))
             stack.addArrangedSubview(row)
         }
+        // NSPopover trusts the content view's own frame; an NSStackView left to
+        // its constraint-based intrinsic size reports zero and the popover
+        // falls back to an oversized default, spilling the rows out of it.
+        stack.layoutSubtreeIfNeeded()
+        stack.frame = NSRect(origin: .zero, size: stack.fittingSize)
         let controller = NSViewController()
         controller.view = stack
         let list = popover ?? NSPopover()

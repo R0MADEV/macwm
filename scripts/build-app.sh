@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-VERSION=${VERSION:-0.2.3}
+VERSION=${VERSION:-0.2.4}
 OUT=${OUT:-"$ROOT/dist"}
 APP="$OUT/macwm.app"
 BAR_APP="$OUT/macwm-bar.app"

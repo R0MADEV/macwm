@@ -4,7 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PREFIX=${PREFIX:-"$HOME/.local"}
 LAUNCH_AGENTS=${LAUNCH_AGENTS:-"$HOME/Library/LaunchAgents"}
-VERSION=${VERSION:-0.2.3}
+VERSION=${VERSION:-0.2.4}
 
 case "$PREFIX" in
   "$HOME"/*|/usr/local|/opt/homebrew) ;;
