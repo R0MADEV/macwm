@@ -771,18 +771,21 @@ enum FrameCorrections {
     /// App Store, would overflow onto their neighbours; the size they kept is
     /// remembered and the grid is laid out again around it. Minimums only grow,
     /// so this settles after one pass per window.
-    static func growTilesOfOversizedWindows(_ changes: [AXClient.FrameChange], result: AXClient.ApplyResult, client: AXClient) {
+    static func growTilesOfOversizedWindows(_ changes: [AXClient.FrameChange], result: AXClient.ApplyResult, client: AXClient, attempt: Int = 0) {
         guard !result.oversized.isEmpty else { return }
         let candidates = changes.filter { result.oversized[$0.window.id] != nil }
         // Some applications, Chrome among them, finish shrinking a moment
         // after answering; only a window still too large then has a minimum.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            MainActor.assumeIsolated { learnMinimumSizes(candidates, client: client) }
+            MainActor.assumeIsolated { learnMinimumSizes(candidates, sizesWhenApplied: result.oversized, client: client, attempt: attempt) }
         }
     }
 
+    /// Times a window still changing size is asked for its tile again before giving up on it.
+    private static let settleAttempts = 3
+
     @MainActor
-    private static func learnMinimumSizes(_ changes: [AXClient.FrameChange], client: AXClient) {
+    private static func learnMinimumSizes(_ changes: [AXClient.FrameChange], sizesWhenApplied: [WindowID: Frame], client: AXClient, attempt: Int) {
         // A window being dragged larger by hand is not one that cannot shrink.
         let isUserDragging = NSEvent.pressedMouseButtons & 1 != 0
         guard !isUserDragging else { return }
@@ -790,6 +793,7 @@ enum FrameCorrections {
         guard let layoutFrame = client.layoutFrame(), let tree = workspaces.value.storedLayoutTree(for: workspace) else { return }
         let cells = tree.frames(in: layoutFrame)
         var learned = false
+        var unsettled: [AXClient.FrameChange] = []
         for change in changes {
             // A later pass gave the window another tile; that pass checks it again.
             let isStillItsTile = store.windows.first { $0.id == change.window.id }?.frame == change.frame
@@ -797,6 +801,13 @@ enum FrameCorrections {
             let isWider = actual.width > change.frame.width + 1
             let isTaller = actual.height > change.frame.height + 1
             guard isWider || isTaller else { continue }
+            // A window still animating, out of full screen for one, is not at
+            // its minimum: a minimum is the same size on both reads.
+            let hasSettled = sizesWhenApplied[change.window.id].map { abs($0.width - actual.width) <= 1 && abs($0.height - actual.height) <= 1 } ?? false
+            guard hasSettled else {
+                unsettled.append(change)
+                continue
+            }
             // The tile is larger than the window by the gaps; the minimum is kept in tile terms.
             let minimum = Size(
                 width: isWider ? actual.width + cell.width - change.frame.width : 0,
@@ -805,6 +816,10 @@ enum FrameCorrections {
             guard workspaces.value.recordMinimumSize(minimum, for: change.window.id) else { continue }
             print("macwm: \(change.window.appName) needs \(Int(actual.width))x\(Int(actual.height)); making room in the grid")
             learned = true
+        }
+        if !unsettled.isEmpty, attempt < settleAttempts {
+            let retried = unsettled
+            client.apply(retried) { result in growTilesOfOversizedWindows(retried, result: result, client: client, attempt: attempt + 1) }
         }
         guard learned else { return }
         applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
