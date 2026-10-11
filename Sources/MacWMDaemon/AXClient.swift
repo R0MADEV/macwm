@@ -330,6 +330,11 @@ final class AXClient: @unchecked Sendable {
         return refused ? .refusedSize : .failed
     }
 
+    /// Native full screen: the window has a Space of its own and cannot be moved.
+    func isFullScreen(_ element: AXUIElement) -> Bool {
+        value(for: element, attribute: "AXFullScreen") ?? false
+    }
+
     func setHidden(_ hidden: Bool, for window: ManagedWindow) -> Bool {
         guard let element = element(for: window) else { return false }
         let value = NSNumber(value: hidden)

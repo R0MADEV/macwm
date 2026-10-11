@@ -61,6 +61,12 @@ var userResizedWindows: Set<WindowID> = []
 /// screen: they hold no tile until they resize again or the workspace is
 /// switched, when placing them is tried once more.
 var unplaceableWindows: Set<WindowID> = []
+/// How often each window refused. Asking again resizes the windows around
+/// it, and some applications answer a refused move with another resize
+/// notification, so retries on resize are counted and capped: unbounded they
+/// re-tile the workspace in a loop that freezes the machine.
+var placementRefusals: [WindowID: Int] = [:]
+let placementRetryLimit = 2
 var userResizeTimer: Timer?
 let socketPath = "/tmp/macwm.sock"
 let eventsSocketPath = "/tmp/macwm-events.sock"
@@ -189,8 +195,12 @@ let observerRegistry = AXObserverRegistry { processID, event in
             let isUserDragging = NSEvent.pressedMouseButtons & 1 != 0
             guard !layoutGuard.isApplying else { return }
             let id = WindowID(processID: UInt32(application.processIdentifier), elementHash: Int(truncatingIfNeeded: CFHash(element)))
-            // Leaving full screen resizes the window: it may take a tile again.
-            if unplaceableWindows.remove(id) != nil {
+            if unplaceableWindows.contains(id) {
+                // Leaving full screen resizes the window: it may take a tile again.
+                let hasRetriesLeft = placementRefusals[id, default: 0] < placementRetryLimit
+                let canRetry = hasRetriesLeft && !client.isFullScreen(element)
+                guard canRetry else { return }
+                unplaceableWindows.remove(id)
                 applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
                 return
             }
@@ -571,7 +581,10 @@ private func switchWorkspace(
 
     let started = DispatchTime.now().uptimeNanoseconds
     lastWorkspaceSwitch.nanoseconds = started
-    MainActor.assumeIsolated { unplaceableWindows.removeAll() }
+    MainActor.assumeIsolated {
+        unplaceableWindows.removeAll()
+        placementRefusals.removeAll()
+    }
     showWorkspaceWindows(workspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
     let parked = DispatchTime.now().uptimeNanoseconds
     applyTiling(client: client, store: &store, config: config, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
@@ -683,6 +696,7 @@ private func removeWindow(_ id: WindowID) {
     store.remove(id)
     maximizedFrames.removeValue(forKey: id)
     unplaceableWindows.remove(id)
+    placementRefusals.removeValue(forKey: id)
     parkedFrames.value.removeValue(forKey: id)
     workspaces.value.remove(id)
     applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
@@ -863,6 +877,7 @@ enum FrameCorrections {
         MainActor.assumeIsolated {
             for change in refused {
                 unplaceableWindows.insert(change.window.id)
+                placementRefusals[change.window.id, default: 0] += 1
                 print("macwm: \(change.window.appName) cannot be moved; leaving it out of the layout")
             }
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
