@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-VERSION=${VERSION:-0.2.6}
+VERSION=${VERSION:-0.2.11}
 OUT=${OUT:-"$ROOT/dist"}
 NAME="macwm-$VERSION-arm64"
 PAYLOAD="$OUT/.pkg-payload"
