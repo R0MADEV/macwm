@@ -76,7 +76,9 @@ final class PillView: NSView {
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 7),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: max(18, theme.fontSize + 9))
+            // A fixed height: with only a lower bound Auto Layout may stretch the
+            // pill to the bar's height and leave its label off-center.
+            heightAnchor.constraint(equalToConstant: max(18, theme.fontSize + 9))
         ])
         if theme.isVertical { setContentCompressionResistancePriority(.defaultLow, for: .horizontal) }
     }
