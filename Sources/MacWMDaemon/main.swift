@@ -8,9 +8,11 @@ let permissionOptions = [
     "AXTrustedCheckOptionPrompt": true
 ] as CFDictionary
 
-guard AXIsProcessTrustedWithOptions(permissionOptions) else {
+if !AXIsProcessTrustedWithOptions(permissionOptions) {
     fputs("macwm: Accessibility permission is required. Enable it in System Settings > Privacy & Security > Accessibility.\n", stderr)
-    exit(EXIT_FAILURE)
+    // Waiting asks once. Exiting made launchd start the daemon again every
+    // ten seconds, each start queueing another permission dialog.
+    while !AXIsProcessTrusted() { Thread.sleep(forTimeInterval: 1) }
 }
 
 // The daemon fronts every key press and reacts to focus changes, so macOS must
