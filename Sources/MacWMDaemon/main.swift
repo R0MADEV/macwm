@@ -57,6 +57,10 @@ var pendingWindowRemovals: Set<WindowID> = []
 /// Tiled windows the user is resizing by dragging an edge; their new size is
 /// adopted once the mouse button is released.
 var userResizedWindows: Set<WindowID> = []
+/// Windows whose application refused to move them, typically in native full
+/// screen: they hold no tile until they resize again or the workspace is
+/// switched, when placing them is tried once more.
+var unplaceableWindows: Set<WindowID> = []
 var userResizeTimer: Timer?
 let socketPath = "/tmp/macwm.sock"
 let eventsSocketPath = "/tmp/macwm-events.sock"
@@ -183,8 +187,15 @@ let observerRegistry = AXObserverRegistry { processID, event in
         case .windowResized(let element):
             // Only a drag by the user counts: macwm resizes with the button up.
             let isUserDragging = NSEvent.pressedMouseButtons & 1 != 0
-            guard isUserDragging, !layoutGuard.isApplying else { return }
-            watchUserResize(WindowID(processID: UInt32(application.processIdentifier), elementHash: Int(truncatingIfNeeded: CFHash(element))))
+            guard !layoutGuard.isApplying else { return }
+            let id = WindowID(processID: UInt32(application.processIdentifier), elementHash: Int(truncatingIfNeeded: CFHash(element)))
+            // Leaving full screen resizes the window: it may take a tile again.
+            if unplaceableWindows.remove(id) != nil {
+                applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+                return
+            }
+            guard isUserDragging else { return }
+            watchUserResize(id)
         case .environmentChanged:
             // Without Accessibility every query answers empty; replacing the
             // store with that would abandon parked windows in the corner.
@@ -560,6 +571,7 @@ private func switchWorkspace(
 
     let started = DispatchTime.now().uptimeNanoseconds
     lastWorkspaceSwitch.nanoseconds = started
+    MainActor.assumeIsolated { unplaceableWindows.removeAll() }
     showWorkspaceWindows(workspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
     let parked = DispatchTime.now().uptimeNanoseconds
     applyTiling(client: client, store: &store, config: config, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
@@ -670,6 +682,7 @@ private func adoptUserResizes(_ ids: Set<WindowID>) {
 private func removeWindow(_ id: WindowID) {
     store.remove(id)
     maximizedFrames.removeValue(forKey: id)
+    unplaceableWindows.remove(id)
     parkedFrames.value.removeValue(forKey: id)
     workspaces.value.remove(id)
     applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames)
@@ -827,6 +840,20 @@ enum FrameCorrections {
         }
     }
 
+    /// A window that cannot be moved would keep an empty tile, leaving the
+    /// others laid out as if it were on screen.
+    static func untileRefusingPosition(_ changes: [AXClient.FrameChange], result: AXClient.ApplyResult, client: AXClient) {
+        let refused = changes.filter { result.refusedPosition.contains($0.window.id) && !$0.positionOnly }
+        guard !refused.isEmpty else { return }
+        MainActor.assumeIsolated {
+            for change in refused {
+                unplaceableWindows.insert(change.window.id)
+                print("macwm: \(change.window.appName) cannot be moved; leaving it out of the layout")
+            }
+            applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        }
+    }
+
     /// A window that refuses its tile size for good, like a fixed-size game,
     /// floats from now on instead of leaving a hole every pass.
     static func floatRefusingSize(_ changes: [AXClient.FrameChange], result: AXClient.ApplyResult, client: AXClient) {
@@ -891,8 +918,9 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     })
     guard config.autoTile || force else { return }
     guard let layoutFrame = client.layoutFrame() else { return }
+    let unplaceable = MainActor.assumeIsolated { unplaceableWindows }
     let tileableWindows = store.windows.filter {
-        $0.isTileable && $0.frame != nil && maximizedFrames[$0.id] == nil && workspaces.workspace(for: $0.id) == workspaces.activeWorkspace
+        $0.isTileable && $0.frame != nil && maximizedFrames[$0.id] == nil && !unplaceable.contains($0.id) && workspaces.workspace(for: $0.id) == workspaces.activeWorkspace
     }
     let windowIDs = workspaces.layoutLeaves(for: tileableWindows.map(\.id))
     let layout = workspaces.layout(for: workspaces.activeWorkspace, default: config.defaultLayout(for: workspaces.activeWorkspace))
@@ -935,6 +963,7 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     client.apply(queued) { result in
         FrameCorrections.rereadRejected(queued, result: result, client: client)
         FrameCorrections.floatRefusingSize(queued, result: result, client: client)
+        FrameCorrections.untileRefusingPosition(queued, result: result, client: client)
         FrameCorrections.dropVanished(result)
         FrameCorrections.growTilesOfOversizedWindows(queued, result: result, client: client)
     }

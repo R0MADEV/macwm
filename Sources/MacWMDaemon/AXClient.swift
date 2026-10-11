@@ -236,9 +236,12 @@ final class AXClient: @unchecked Sendable {
         /// Real frames of windows that stayed larger than the frame asked for,
         /// because the application has a minimum size.
         let oversized: [WindowID: Frame]
+        /// Windows whose application refused to move them, as it does for a
+        /// window in native full screen.
+        var refusedPosition: Set<WindowID> = []
     }
 
-    private enum FrameOutcome { case applied, refusedSize, failed }
+    private enum FrameOutcome { case applied, refusedSize, refusedPosition, failed }
 
     func apply(_ changes: [FrameChange], completion: @escaping @Sendable (ApplyResult) -> Void = { _ in }) {
         let groups = Dictionary(grouping: changes) { $0.window.processID }.map { $0.value }
@@ -266,6 +269,7 @@ final class AXClient: @unchecked Sendable {
                         let isLargerThanAsked = actual.width > change.frame.width + 1 || actual.height > change.frame.height + 1
                         if isLargerThanAsked { applied.oversize(change.window.id, actual) }
                     case .refusedSize: applied.refuse(change.window.id)
+                    case .refusedPosition: applied.refusePosition(change.window.id)
                     case .failed: break
                     }
                 }
@@ -281,7 +285,9 @@ final class AXClient: @unchecked Sendable {
         private var refused: Set<WindowID> = []
         private var vanished: Set<WindowID> = []
         private var oversized: [WindowID: Frame] = [:]
-        var result: ApplyResult { lock.withLock { ApplyResult(applied: applied, refusedSize: refused, vanished: vanished, oversized: oversized) } }
+        private var refusedPosition: Set<WindowID> = []
+        var result: ApplyResult { lock.withLock { ApplyResult(applied: applied, refusedSize: refused, vanished: vanished, oversized: oversized, refusedPosition: refusedPosition) } }
+        func refusePosition(_ id: WindowID) { lock.withLock { _ = refusedPosition.insert(id) } }
         func add(_ id: WindowID) { lock.withLock { _ = applied.insert(id) } }
         func refuse(_ id: WindowID) { lock.withLock { _ = refused.insert(id) } }
         func vanish(_ id: WindowID) { lock.withLock { _ = vanished.insert(id) } }
@@ -310,6 +316,8 @@ final class AXClient: @unchecked Sendable {
             let retryResult = AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, position)
             if sizeResult == .success, retryResult == .success { return .applied }
             fputs("macwm: setFrame failed for \(window.appName) - \(window.title) (position \(positionResult.rawValue), size \(sizeResult.rawValue), retry \(retryResult.rawValue))\n", stderr)
+            // kAXErrorFailure is the application saying no; a timeout may still pass.
+            if retryResult == .failure { return .refusedPosition }
         } else if sizeResult == .success {
             return .applied
         } else {
