@@ -134,6 +134,20 @@ private let screen = Frame(x: 0, y: 0, width: 1600, height: 1000)
     #expect(abs((frames[WindowID(3)]?.height ?? 0) - 300) < 0.01)
 }
 
+@Test func sharesAreEqualWhenAMinimumWouldStarveTheOthers() {
+    #expect(WindowTree.shares(of: 2040, minimums: [2040, 0]) == [1020, 1020])
+    #expect(WindowTree.shares(of: 2040, minimums: [1990, 0, 0]) == [680, 680, 680])
+    #expect(WindowTree.shares(of: 1000, minimums: [800, 800]) == [500, 500])
+}
+
+@Test func gridNeverLeavesASliverNextToAWindowThatWantsTheWholeFrame() {
+    let windows: [WindowID] = [1, 2].map { WindowID(UInt64($0)) }
+    let frames = WindowTree.grid(for: windows, in: screen, minimumSizes: [WindowID(1): Size(width: 1600, height: 0)])?.frames(in: screen) ?? [:]
+
+    #expect(abs((frames[WindowID(1)]?.width ?? 0) - 800) < 0.01)
+    #expect(abs((frames[WindowID(2)]?.width ?? 0) - 800) < 0.01)
+}
+
 @Test func fittingMovesTheSplitOnTheEdgeTheUserDragged() {
     let frame = Frame(x: 0, y: 0, width: 1000, height: 600)
     let tree = v(0.5, leaf(1), leaf(2))

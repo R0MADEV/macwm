@@ -90,18 +90,29 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
     }
 
     /// Equal parts of `total`, except parts whose minimum is larger: those get
-    /// their minimum and the others share what is left.
+    /// their minimum and the others share what is left. Minimums that would
+    /// leave another part below `smallestShare`, or that do not fit at all,
+    /// cannot be honoured, so every part is equal instead.
     static func shares(of total: Double, minimums: [Double]) -> [Double] {
+        let equalParts = minimums.map { _ in total / Double(minimums.count) }
         var fixed: Set<Int> = []
         while fixed.count < minimums.count {
             let free = total - fixed.reduce(0) { $0 + minimums[$1] }
             let equal = free / Double(minimums.count - fixed.count)
             let needMore = minimums.indices.filter { !fixed.contains($0) && minimums[$0] > equal }
-            guard !needMore.isEmpty else { return minimums.indices.map { fixed.contains($0) ? minimums[$0] : equal } }
-            fixed.formUnion(needMore)
+            guard needMore.isEmpty else {
+                fixed.formUnion(needMore)
+                continue
+            }
+            guard equal >= smallestShare else { return equalParts }
+            return minimums.indices.map { fixed.contains($0) ? minimums[$0] : equal }
         }
-        return minimums
+        let fitsExactly = minimums.reduce(0, +) <= total + 1
+        return fitsExactly ? minimums : equalParts
     }
+
+    /// No tile may be narrower or shorter than this.
+    public static let smallestShare: Double = 100
 
     /// Splits along one axis giving each tree its part of `sizes`.
     private static func splits(_ trees: [WindowTree], sizedBy sizes: [Double], direction: SplitDirection) -> WindowTree? {

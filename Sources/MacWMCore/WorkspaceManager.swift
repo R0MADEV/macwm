@@ -120,7 +120,7 @@ public struct WorkspaceManager: Sendable {
     public func hasMinimumSize(_ window: WindowID) -> Bool { minimumSizes[window] != nil }
 
     /// No hand resize may leave a tile smaller than this.
-    private static let smallestTile = Size(width: 100, height: 100)
+    private static let smallestTile = Size(width: WindowTree.smallestShare, height: WindowTree.smallestShare)
 
     /// Every tile is at least as large as its window's minimum and the smallest tile.
     private func fitsItsWindows(_ tree: WindowTree, in frame: Frame) -> Bool {
