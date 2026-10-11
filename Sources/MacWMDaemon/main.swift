@@ -266,13 +266,26 @@ if mouse == nil { fputs("macwm: unable to register the mouse tap; Option+drag on
 // Losing Accessibility, for example when it is switched off in System
 // Settings, must stop the taps at once: an untrusted process that keeps
 // re-enabling active taps freezes keyboard and mouse for the whole Mac.
-let trustWatchdog = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-    let trusted = AXIsProcessTrusted()
+let trustWatchdog = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+    let trusted = AXIsProcessTrusted() && EventTap.canStillTapEvents()
     guard trusted != hotkeys.isTrusted else { return }
     hotkeys.isTrusted = trusted
     mouse?.isTrusted = trusted
     fputs("macwm: Accessibility \(trusted ? "granted again; resuming" : "revoked; pausing hotkeys and mouse handling")\n", stderr)
+    // Pausing was not always enough: removing the daemon from the list still
+    // froze the Mac. Only the process ending is sure to take its taps down;
+    // launchd starts it again and it waits at the trust check above.
+    guard trusted else { exit(EXIT_FAILURE) }
     if trusted { FrameCorrections.recoverAfterTrust(client: client) }
+}
+
+// A second line of defence behind the watchdog: when a permission in the
+// Accessibility list is switched, the daemon ends and launchd starts it again,
+// so the fresh process reads its real permission. macOS does not post this
+// when an entry is removed; the watchdog's tap probe is what catches that.
+let accessibilityListObserver = DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.apple.accessibility.api"), object: nil, queue: nil) { _ in
+    fputs("macwm: the Accessibility list changed; restarting to read the permission afresh\n", stderr)
+    exit(EXIT_FAILURE)
 }
 
 let focusFollowsMouse = FocusFollowsMouse(client: client, focus: { id in

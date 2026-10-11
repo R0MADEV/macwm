@@ -38,6 +38,21 @@ final class EventTap: @unchecked Sendable {
         CFRunLoopStop(runLoop)
     }
 
+    /// AXIsProcessTrusted goes on answering true once the daemon is removed from
+    /// the Accessibility list, as opposed to switched off there, while its taps
+    /// already hold every key and click. Creating a tap asks the system afresh.
+    static func canStillTapEvents() -> Bool {
+        // An event no device here sends, so the probe never sits in front of real input.
+        let mask = CGEventMask(1) << CGEventType.tabletProximity.rawValue
+        guard let probe = CGEvent.tapCreate(
+            tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .defaultTap, eventsOfInterest: mask,
+            callback: { _, _, event, _ in Unmanaged.passUnretained(event) }, userInfo: nil
+        ) else { return false }
+        CGEvent.tapEnable(tap: probe, enable: false)
+        CFMachPortInvalidate(probe)
+        return true
+    }
+
     private var isPaused = false
     private var recentReenables: [UInt64] = []
 
@@ -45,8 +60,12 @@ final class EventTap: @unchecked Sendable {
         if type == .tapDisabledByUserInput {
             // macOS turned the tap off on purpose, for example when Accessibility
             // was revoked. Fighting it blocks every key and click on the Mac.
-            fputs("macwm: event tap \(name) was disabled by macOS; leaving it off until trust returns\n", stderr)
-            return Unmanaged.passUnretained(event)
+            guard !isPaused else { return Unmanaged.passUnretained(event) }
+            // Not paused by the daemon, so macOS did it. A process that stays
+            // alive here has frozen the Mac before; ending it is the only
+            // sure way to let go of keyboard and mouse.
+            fputs("macwm: event tap \(name) was disabled by macOS; exiting to release the keyboard and mouse\n", stderr)
+            exit(EXIT_FAILURE)
         }
         if type == .tapDisabledByTimeout {
             guard !isPaused, AXIsProcessTrusted(), allowReenable() else { return Unmanaged.passUnretained(event) }
