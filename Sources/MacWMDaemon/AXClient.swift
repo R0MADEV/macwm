@@ -230,6 +230,12 @@ final class AXClient: @unchecked Sendable {
         let applied: Set<WindowID>
         /// Windows whose application refused the size outright, not just late.
         let refusedSize: Set<WindowID>
+        /// Windows missing from their application's live window list: closed
+        /// without a destroy notification, as iOS apps and games do.
+        let vanished: Set<WindowID>
+        /// Real frames of windows that stayed larger than the frame asked for,
+        /// because the application has a minimum size.
+        let oversized: [WindowID: Frame]
     }
 
     private enum FrameOutcome { case applied, refusedSize, failed }
@@ -237,7 +243,7 @@ final class AXClient: @unchecked Sendable {
     func apply(_ changes: [FrameChange], completion: @escaping @Sendable (ApplyResult) -> Void = { _ in }) {
         let groups = Dictionary(grouping: changes) { $0.window.processID }.map { $0.value }
         guard !groups.isEmpty else {
-            DispatchQueue.main.async { completion(ApplyResult(applied: [], refusedSize: [])) }
+            DispatchQueue.main.async { completion(ApplyResult(applied: [], refusedSize: [], vanished: [], oversized: [:])) }
             return
         }
         let applied = AppliedWindows()
@@ -245,11 +251,20 @@ final class AXClient: @unchecked Sendable {
         for group in groups {
             pending.enter()
             queue(for: pid_t(group[0].window.processID)).async { [self] in
+                // A failed query says nothing about which windows still exist.
                 let elements = windowElements(forProcess: pid_t(group[0].window.processID))
                 for change in group {
-                    guard let element = elements[change.window.id] else { continue }
+                    guard let elements else { break }
+                    guard let element = elements[change.window.id] else {
+                        applied.vanish(change.window.id)
+                        continue
+                    }
                     switch setFrame(change.frame, on: element, positionOnly: change.positionOnly, describing: change.window) {
-                    case .applied: applied.add(change.window.id)
+                    case .applied:
+                        applied.add(change.window.id)
+                        guard !change.positionOnly, let actual = frame(of: element) else { continue }
+                        let isLargerThanAsked = actual.width > change.frame.width + 1 || actual.height > change.frame.height + 1
+                        if isLargerThanAsked { applied.oversize(change.window.id, actual) }
                     case .refusedSize: applied.refuse(change.window.id)
                     case .failed: break
                     }
@@ -264,14 +279,18 @@ final class AXClient: @unchecked Sendable {
         private let lock = NSLock()
         private var applied: Set<WindowID> = []
         private var refused: Set<WindowID> = []
-        var result: ApplyResult { lock.withLock { ApplyResult(applied: applied, refusedSize: refused) } }
+        private var vanished: Set<WindowID> = []
+        private var oversized: [WindowID: Frame] = [:]
+        var result: ApplyResult { lock.withLock { ApplyResult(applied: applied, refusedSize: refused, vanished: vanished, oversized: oversized) } }
         func add(_ id: WindowID) { lock.withLock { _ = applied.insert(id) } }
         func refuse(_ id: WindowID) { lock.withLock { _ = refused.insert(id) } }
+        func vanish(_ id: WindowID) { lock.withLock { _ = vanished.insert(id) } }
+        func oversize(_ id: WindowID, _ frame: Frame) { lock.withLock { oversized[id] = frame } }
     }
 
-    private func windowElements(forProcess processID: pid_t) -> [WindowID: AXUIElement] {
+    private func windowElements(forProcess processID: pid_t) -> [WindowID: AXUIElement]? {
         let applicationElement = AXUIElementCreateApplication(processID)
-        guard let elements: [AXUIElement] = value(for: applicationElement, attribute: kAXWindowsAttribute) else { return [:] }
+        guard let elements: [AXUIElement] = value(for: applicationElement, attribute: kAXWindowsAttribute) else { return nil }
         return Dictionary(elements.map { (WindowID(processID: UInt32(processID), elementHash: Int(truncatingIfNeeded: CFHash($0))), $0) }) { first, _ in first }
     }
 

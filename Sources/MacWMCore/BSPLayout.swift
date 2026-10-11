@@ -55,11 +55,61 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
         }
     }
 
-    public var lastLeaf: WindowID {
+    /// Windows in reading order: left before right, top before bottom.
+    public var leafOrder: [WindowID] {
         switch self {
-        case let .leaf(window): return window
-        case let .split(_, _, _, second): return second.lastLeaf
+        case let .leaf(window): return [window]
+        case let .split(_, _, first, second): return first.leafOrder + second.leafOrder
         }
+    }
+
+    /// Rows of equal height holding windows of equal width, with as many
+    /// columns as suit the frame's shape; earlier rows take any extra window.
+    /// Windows that cannot shrink that far get their minimum size and the
+    /// rest of their row, or the rest of the rows, share what is left.
+    public static func grid(for windows: [WindowID], in frame: Frame, minimumSizes: [WindowID: Size] = [:]) -> WindowTree? {
+        guard !windows.isEmpty else { return nil }
+        let aspect = frame.height > 0 ? frame.width / frame.height : 1
+        let idealColumns = (Double(windows.count) * aspect).squareRoot().rounded()
+        let columns = min(windows.count, max(1, Int(idealColumns)))
+        let rowCount = (windows.count + columns - 1) / columns
+        var remaining = windows[...]
+        var rows: [[WindowID]] = []
+        for row in 0..<rowCount {
+            let rowsLeft = rowCount - row
+            let size = (remaining.count + rowsLeft - 1) / rowsLeft
+            rows.append(Array(remaining.prefix(size)))
+            remaining = remaining.dropFirst(size)
+        }
+        let rowTrees = rows.compactMap { row in
+            let widths = shares(of: frame.width, minimums: row.map { minimumSizes[$0]?.width ?? 0 })
+            return splits(row.map { .leaf($0) }, sizedBy: widths, direction: .vertical)
+        }
+        let rowMinimums = rows.map { row in row.map { minimumSizes[$0]?.height ?? 0 }.max() ?? 0 }
+        return splits(rowTrees, sizedBy: shares(of: frame.height, minimums: rowMinimums), direction: .horizontal)
+    }
+
+    /// Equal parts of `total`, except parts whose minimum is larger: those get
+    /// their minimum and the others share what is left.
+    static func shares(of total: Double, minimums: [Double]) -> [Double] {
+        var fixed: Set<Int> = []
+        while fixed.count < minimums.count {
+            let free = total - fixed.reduce(0) { $0 + minimums[$1] }
+            let equal = free / Double(minimums.count - fixed.count)
+            let needMore = minimums.indices.filter { !fixed.contains($0) && minimums[$0] > equal }
+            guard !needMore.isEmpty else { return minimums.indices.map { fixed.contains($0) ? minimums[$0] : equal } }
+            fixed.formUnion(needMore)
+        }
+        return minimums
+    }
+
+    /// Splits along one axis giving each tree its part of `sizes`.
+    private static func splits(_ trees: [WindowTree], sizedBy sizes: [Double], direction: SplitDirection) -> WindowTree? {
+        guard let first = trees.first else { return nil }
+        guard let rest = splits(Array(trees.dropFirst()), sizedBy: Array(sizes.dropFirst()), direction: direction) else { return first }
+        let total = sizes.reduce(0, +)
+        let ratio = total > 0 ? sizes[0] / total : 1 / Double(trees.count)
+        return .split(direction: direction, ratio: ratio, first: first, second: rest)
     }
 
     /// Replaces the `target` leaf with a split holding `target` and the new window.
@@ -90,12 +140,6 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
             case (let newFirst?, let newSecond?): return .split(direction: direction, ratio: ratio, first: newFirst, second: newSecond)
             }
         }
-    }
-
-    /// Dwindle rule: a wide leaf is split side by side, a tall one top and bottom.
-    public func automaticSplitDirection(for id: WindowID, in frame: Frame) -> SplitDirection {
-        let leafFrame = frames(in: frame)[id] ?? frame
-        return leafFrame.width >= leafFrame.height ? .vertical : .horizontal
     }
 
     /// Gives the side holding `id` more (or less) of its nearest split, so a
@@ -170,8 +214,49 @@ public indirect enum WindowTree: Sendable, Equatable, Codable {
         }
     }
 
+    /// A window resized by hand: every edge it moved drags the split that
+    /// edge sits on, the nearest one above the window on that side. Edges on
+    /// the frame's border have no split and stay.
+    public func fitting(_ id: WindowID, to target: Frame, in frame: Frame) -> WindowTree {
+        fittingNode(id, to: target, in: frame).tree
+    }
+
+    private enum Edge { case left, right, top, bottom }
+
+    private func fittingNode(_ id: WindowID, to target: Frame, in frame: Frame) -> (tree: WindowTree, openEdges: Set<Edge>) {
+        switch self {
+        case let .leaf(window):
+            return (self, window == id ? [.left, .right, .top, .bottom] : [])
+        case let .split(direction, ratio, first, second):
+            guard windowIDs.contains(id) else { return (self, []) }
+            let (firstFrame, secondFrame) = Self.childFrames(direction: direction, ratio: ratio, in: frame)
+            let isInFirst = first.windowIDs.contains(id)
+            let child = isInFirst ? first.fittingNode(id, to: target, in: firstFrame) : second.fittingNode(id, to: target, in: secondFrame)
+            var openEdges = child.openEdges
+            let edge: Edge
+            let start: Double
+            let length: Double
+            let targetBoundary: Double
+            switch (direction, isInFirst) {
+            case (.vertical, true): (edge, start, length, targetBoundary) = (.right, frame.x, frame.width, target.x + target.width)
+            case (.vertical, false): (edge, start, length, targetBoundary) = (.left, frame.x, frame.width, target.x)
+            case (.horizontal, true): (edge, start, length, targetBoundary) = (.bottom, frame.y, frame.height, target.y + target.height)
+            case (.horizontal, false): (edge, start, length, targetBoundary) = (.top, frame.y, frame.height, target.y)
+            }
+            var newRatio = ratio
+            if openEdges.contains(edge), length > 0 {
+                openEdges.remove(edge)
+                let currentBoundary = start + length * ratio
+                let edgeMoved = abs(targetBoundary - currentBoundary) > 1
+                if edgeMoved { newRatio = min(max((targetBoundary - start) / length, 0.05), 0.95) }
+            }
+            let tree = WindowTree.split(direction: direction, ratio: newRatio, first: isInFirst ? child.tree : first, second: isInFirst ? second : child.tree)
+            return (tree, openEdges)
+        }
+    }
+
     private static func childFrames(direction: SplitDirection, ratio: Double, in frame: Frame) -> (Frame, Frame) {
-        let boundedRatio = min(max(ratio, 0.1), 0.9)
+        let boundedRatio = min(max(ratio, 0.01), 0.99)
         switch direction {
         case .horizontal:
             let firstHeight = frame.height * boundedRatio

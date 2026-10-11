@@ -7,6 +7,7 @@ final class AXEventObserver {
         case windowDestroyed(AXUIElement)
         case focusedWindowChanged(AXUIElement)
         case windowVisibilityChanged(AXUIElement)
+        case windowResized(AXUIElement)
         case environmentChanged
     }
 
@@ -26,7 +27,8 @@ final class AXEventObserver {
             kAXUIElementDestroyedNotification,
             kAXFocusedWindowChangedNotification,
             kAXWindowMiniaturizedNotification,
-            kAXWindowDeminiaturizedNotification
+            kAXWindowDeminiaturizedNotification,
+            kAXWindowResizedNotification
         ]
 
         for notification in notifications {
@@ -63,6 +65,8 @@ final class AXEventObserver {
             handler(.focusedWindowChanged(element))
         case kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification:
             handler(.windowVisibilityChanged(element))
+        case kAXWindowResizedNotification:
+            handler(.windowResized(element))
         default:
             return
         }

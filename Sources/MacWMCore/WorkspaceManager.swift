@@ -10,7 +10,12 @@ public struct WorkspaceManager: Sendable {
     private var trees: [Int: WindowTree]
     private var layouts: [Int: LayoutKind]
     private var lastFocused: [Int: WindowID] = [:]
-    private var preselections: [Int: SplitDirection] = [:]
+    /// Workspaces whose window set changed outside a tiling pass, so the
+    /// next pass lays them out as a fresh grid.
+    private var staleGrids: Set<Int> = []
+    /// Smallest size each window accepted, learned from windows that stayed
+    /// larger than their tile.
+    private var minimumSizes: [WindowID: Size] = [:]
     private var groups = WindowGroups()
 
     public init(count: Int = 9, assignments: [WindowKey: Int] = [:], activeWorkspace: Int = 1, trees: [Int: WindowTree] = [:], layouts: [Int: LayoutKind] = [:]) {
@@ -78,62 +83,66 @@ public struct WorkspaceManager: Sendable {
 
     public func storedLayoutTree(for workspace: Int) -> WindowTree? { trees[workspace] }
 
-    /// Only used to pick automatic split directions when no real frame is known.
+    /// Only used to shape the grid when no real frame is known.
     public static let referenceFrame = Frame(x: 0, y: 0, width: 1600, height: 1000)
-
-    /// The next window opened in the workspace splits its target in this direction.
-    public mutating func preselect(_ direction: SplitDirection, in workspace: Int) {
-        guard isValid(workspace) else { return }
-        preselections[workspace] = direction
-    }
 
     public func layoutTree(for windows: [WindowID], in workspace: Int, frame: Frame = WorkspaceManager.referenceFrame) -> WindowTree? {
         guard isValid(workspace), !windows.isEmpty else { return nil }
-        return reconciledTree(for: windows, in: workspace, frame: frame, minimumCell: Self.defaultMinimumCell).tree
+        return reconciledTree(for: windows, in: workspace, frame: frame)
     }
 
-    /// Cells smaller than this make most macOS applications overflow their
-    /// tile, so new windows avoid creating them when a larger leaf exists.
-    public static let defaultMinimumCell: (width: Double, height: Double) = (400, 300)
-
-    public mutating func validatedLayoutTree(for windows: [WindowID], in workspace: Int, frame: Frame = WorkspaceManager.referenceFrame, minimumCell: (width: Double, height: Double) = WorkspaceManager.defaultMinimumCell) -> WindowTree? {
+    public mutating func validatedLayoutTree(for windows: [WindowID], in workspace: Int, frame: Frame = WorkspaceManager.referenceFrame) -> WindowTree? {
         guard isValid(workspace) else { return nil }
         guard !windows.isEmpty else {
             trees.removeValue(forKey: workspace)
             return nil
         }
-        let result = reconciledTree(for: windows, in: workspace, frame: frame, minimumCell: minimumCell)
-        trees[workspace] = result.tree
-        if result.usedPreselection { preselections.removeValue(forKey: workspace) }
-        return result.tree
+        let tree = reconciledTree(for: windows, in: workspace, frame: frame)
+        trees[workspace] = tree
+        staleGrids.remove(workspace)
+        return tree
     }
 
-    /// Keeps the stored structure like Hyprland's dwindle layout: closed windows
-    /// collapse their split and new windows split the last focused leaf, or the
-    /// last leaf when nothing was focused. A missing or corrupt tree is rebuilt.
-    private func reconciledTree(for windows: [WindowID], in workspace: Int, frame: Frame, minimumCell: (width: Double, height: Double)) -> (tree: WindowTree?, usedPreselection: Bool) {
+    /// Whenever windows open or close the workspace becomes a fresh grid,
+    /// keeping the windows' order with new ones last; manual resizes and
+    /// swaps last until then. A corrupt tree is rebuilt.
+    private func reconciledTree(for windows: [WindowID], in workspace: Int, frame: Frame) -> WindowTree? {
         let windowSet = Set(windows)
-        let hasDuplicates = windowSet.count != windows.count
-        guard !hasDuplicates, let stored = trees[workspace], stored.leafCount == stored.windowIDs.count else {
-            return (BSPLayout.tree(for: windows), false)
+        let stored = trees[workspace].flatMap { $0.leafCount == $0.windowIDs.count ? $0 : nil }
+        let kept = stored?.leafOrder.filter { windowSet.contains($0) } ?? []
+        var order = kept
+        for id in windows where !order.contains(id) && groups.leader(of: id).map({ $0 == id }) ?? true { order.append(id) }
+        let isUnchanged = !staleGrids.contains(workspace) && stored?.windowIDs == Set(order)
+        if isUnchanged, let stored, fitsItsWindows(stored, in: frame) { return stored }
+        return WindowTree.grid(for: order, in: frame, minimumSizes: minimumSizes)
+    }
+
+    public func hasMinimumSize(_ window: WindowID) -> Bool { minimumSizes[window] != nil }
+
+    /// No hand resize may leave a tile smaller than this.
+    private static let smallestTile = Size(width: 100, height: 100)
+
+    /// Every tile is at least as large as its window's minimum and the smallest tile.
+    private func fitsItsWindows(_ tree: WindowTree, in frame: Frame) -> Bool {
+        tree.frames(in: frame).allSatisfy { id, tile in
+            let minimum = minimumSizes[id] ?? Size(width: 0, height: 0)
+            let isWideEnough = tile.width + 1 >= max(minimum.width, Self.smallestTile.width)
+            let isTallEnough = tile.height + 1 >= max(minimum.height, Self.smallestTile.height)
+            return isWideEnough && isTallEnough
         }
-        var tree: WindowTree? = stored
-        for id in stored.windowIDs where !windowSet.contains(id) { tree = tree?.removing(id) }
-        var preselection = preselections[workspace]
-        var usedPreselection = false
-        for id in windows where !stored.windowIDs.contains(id) && groups.leader(of: id).map({ $0 == id }) ?? true {
-            guard let current = tree else {
-                tree = .leaf(id)
-                continue
-            }
-            let focused = lastFocused[workspace].flatMap { current.windowIDs.contains($0) ? $0 : nil }
-            let target = Self.insertionTarget(preferred: focused ?? current.lastLeaf, in: current, frame: frame, minimumCell: minimumCell)
-            let direction = preselection ?? current.automaticSplitDirection(for: target, in: frame)
-            usedPreselection = usedPreselection || preselection != nil
-            preselection = nil
-            tree = current.inserting(id, at: target, direction: direction)
-        }
-        return (tree, usedPreselection)
+    }
+
+    /// Remembers that `window` cannot be smaller than `size`; true when that is
+    /// new, and its workspace is laid out again on the next pass.
+    public mutating func recordMinimumSize(_ size: Size, for window: WindowID) -> Bool {
+        let known = minimumSizes[window] ?? Size(width: 0, height: 0)
+        // Frames come back with fractions of a point; growth below one point is noise.
+        let isWider = size.width > known.width + 1
+        let isTaller = size.height > known.height + 1
+        guard isWider || isTaller else { return false }
+        minimumSizes[window] = Size(width: max(known.width, size.width), height: max(known.height, size.height))
+        if let workspace = assignments[window] { staleGrids.insert(workspace) }
+        return true
     }
 
     public mutating func setLayoutTree(_ tree: WindowTree?, for workspace: Int) {
@@ -145,22 +154,6 @@ public struct WorkspaceManager: Sendable {
         guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(first), tree.windowIDs.contains(second) else { return false }
         trees[workspace] = tree.swapped(first, second)
         return true
-    }
-
-    /// The preferred leaf unless splitting it would leave cells under the
-    /// minimum; then the largest leaf that still fits, or the preferred one
-    /// when nothing does.
-    private static func insertionTarget(preferred: WindowID, in tree: WindowTree, frame: Frame, minimumCell: (width: Double, height: Double)) -> WindowID {
-        let frames = tree.frames(in: frame)
-        func fits(_ id: WindowID) -> Bool {
-            guard let leaf = frames[id] else { return false }
-            let fitsSideBySide = leaf.width / 2 >= minimumCell.width && leaf.height >= minimumCell.height
-            let fitsStacked = leaf.height / 2 >= minimumCell.height && leaf.width >= minimumCell.width
-            return fitsSideBySide || fitsStacked
-        }
-        guard !fits(preferred) else { return preferred }
-        let largest = frames.filter { fits($0.key) }.max { $0.value.width * $0.value.height < $1.value.width * $1.value.height }
-        return largest?.key ?? preferred
     }
 
     // MARK: - Tab groups
@@ -240,6 +233,15 @@ public struct WorkspaceManager: Sendable {
         return true
     }
 
+    /// Adopts the frame the user gave a tiled window by dragging its edges.
+    public mutating func fitTiled(_ window: WindowID, to target: Frame, frame: Frame, in workspace: Int) -> Bool {
+        guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(window) else { return false }
+        let fitted = tree.fitting(window, to: target, in: frame)
+        guard fitted != tree, fitsItsWindows(fitted, in: frame) else { return false }
+        trees[workspace] = fitted
+        return true
+    }
+
     public mutating func toggleSplit(containing window: WindowID, in workspace: Int) -> Bool {
         guard isValid(workspace), let tree = trees[workspace], tree.windowIDs.contains(window) else { return false }
         trees[workspace] = tree.togglingSplit(containing: window)
@@ -275,9 +277,11 @@ public struct WorkspaceManager: Sendable {
                 trees[workspace] = trees[workspace]?.swapped(windowID, promoted)
             } else {
                 trees[workspace] = trees[workspace]?.removing(windowID)
+                staleGrids.insert(workspace)
             }
         }
         assignments.removeValue(forKey: windowID)
+        minimumSizes.removeValue(forKey: windowID)
         guard let key = windowKeys.removeValue(forKey: windowID), keyOwners[key] == windowID else { return }
         keyOwners.removeValue(forKey: key)
         keyAssignments.removeValue(forKey: key)

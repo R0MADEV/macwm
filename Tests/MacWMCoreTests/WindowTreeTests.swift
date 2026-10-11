@@ -58,14 +58,6 @@ private func leaf(_ id: UInt64) -> WindowTree { .leaf(WindowID(id)) }
     #expect(leaf(1).removing(WindowID(1)) == nil)
 }
 
-@Test func automaticDirectionSplitsAlongTheLongerSide() {
-    let wide = Frame(x: 0, y: 0, width: 1000, height: 600)
-
-    #expect(leaf(1).automaticSplitDirection(for: WindowID(1), in: wide) == .vertical)
-    #expect(v(0.5, leaf(1), leaf(2)).automaticSplitDirection(for: WindowID(2), in: wide) == .horizontal)
-    #expect(v(0.5, leaf(1), leaf(2)).lastLeaf == WindowID(2))
-}
-
 @Test func adjustingRatioGrowsTheLeafSideOfItsNearestSplit() {
     let tree = v(0.5, leaf(1), h(0.5, leaf(2), leaf(3)))
 
@@ -92,4 +84,79 @@ private func leaf(_ id: UInt64) -> WindowTree { .leaf(WindowID(id)) }
     // Window 1 has no horizontal split above it, so the vertical delta is ignored.
     #expect(tree.resizing(WindowID(1), deltaX: 100, deltaY: 100, in: frame) == v(0.6, leaf(1), h(0.5, leaf(2), leaf(3))))
     #expect(tree.resizing(WindowID(99), deltaX: 100, deltaY: 100, in: frame) == tree)
+}
+
+@Test func gridOfFourIsTwoByTwo() {
+    let windows: [WindowID] = (1...4).map { WindowID(UInt64($0)) }
+    let frames: [Frame] = Array((WindowTree.grid(for: windows, in: screen)?.frames(in: screen) ?? [:]).values)
+
+    #expect(frames.count == 4)
+    #expect(frames.allSatisfy { $0.width == 800 && $0.height == 500 })
+}
+
+@Test func gridOfThreeGivesTheLastRowTheFullWidth() {
+    let frames = WindowTree.grid(for: (1...3).map { WindowID(UInt64($0)) }, in: screen)?.frames(in: screen)
+
+    #expect(frames?[WindowID(1)] == Frame(x: 0, y: 0, width: 800, height: 500))
+    #expect(frames?[WindowID(2)] == Frame(x: 800, y: 0, width: 800, height: 500))
+    #expect(frames?[WindowID(3)] == Frame(x: 0, y: 500, width: 1600, height: 500))
+}
+
+@Test func gridSpreadsTenWindowsOverEvenRows() {
+    let windows: [WindowID] = (1...10).map { WindowID(UInt64($0)) }
+    let frames: [Frame] = Array((WindowTree.grid(for: windows, in: screen)?.frames(in: screen) ?? [:]).values)
+    let windowsPerRow = Dictionary(grouping: frames) { Int($0.y.rounded()) }.sorted { $0.key < $1.key }.map(\.value.count)
+
+    #expect(windowsPerRow == [4, 3, 3])
+}
+
+@Test func leafOrderReadsTheTreeLeftToRight() {
+    #expect(v(0.5, leaf(2), h(0.5, leaf(3), leaf(1))).leafOrder == [WindowID(2), WindowID(3), WindowID(1)])
+}
+
+private let screen = Frame(x: 0, y: 0, width: 1600, height: 1000)
+
+@Test func gridGivesWindowsTheirMinimumWidthAndSharesTheRest() {
+    let wide = Frame(x: 0, y: 0, width: 2400, height: 600)
+    let windows: [WindowID] = [1, 2, 3].map { WindowID(UInt64($0)) }
+    let frames = WindowTree.grid(for: windows, in: wide, minimumSizes: [WindowID(3): Size(width: 1000, height: 0)])?.frames(in: wide) ?? [:]
+
+    #expect(abs((frames[WindowID(1)]?.width ?? 0) - 700) < 0.01)
+    #expect(abs((frames[WindowID(2)]?.width ?? 0) - 700) < 0.01)
+    #expect(abs((frames[WindowID(3)]?.width ?? 0) - 1000) < 0.01)
+}
+
+@Test func gridGivesRowsTheHeightTheirTallestWindowNeeds() {
+    let windows: [WindowID] = (1...4).map { WindowID(UInt64($0)) }
+    let frames = WindowTree.grid(for: windows, in: screen, minimumSizes: [WindowID(2): Size(width: 0, height: 700)])?.frames(in: screen) ?? [:]
+
+    #expect(abs((frames[WindowID(1)]?.height ?? 0) - 700) < 0.01)
+    #expect(abs((frames[WindowID(3)]?.height ?? 0) - 300) < 0.01)
+}
+
+@Test func fittingMovesTheSplitOnTheEdgeTheUserDragged() {
+    let frame = Frame(x: 0, y: 0, width: 1000, height: 600)
+    let tree = v(0.5, leaf(1), leaf(2))
+
+    // Window 2's left edge dragged from 500 to 300.
+    #expect(tree.fitting(WindowID(2), to: Frame(x: 300, y: 0, width: 700, height: 600), in: frame) == v(0.3, leaf(1), leaf(2)))
+    // Window 1's right edge dragged from 500 to 700.
+    #expect(tree.fitting(WindowID(1), to: Frame(x: 0, y: 0, width: 700, height: 600), in: frame) == v(0.7, leaf(1), leaf(2)))
+}
+
+@Test func fittingMovesTheNearestSplitOfEachDraggedEdge() {
+    let frame = Frame(x: 0, y: 0, width: 1000, height: 600)
+    let tree = v(0.5, leaf(1), h(0.5, leaf(2), leaf(3)))
+
+    // Window 3 (500,300 500x300): top edge to 200 and left edge to 400.
+    let fitted = tree.fitting(WindowID(3), to: Frame(x: 400, y: 200, width: 600, height: 400), in: frame)
+
+    #expect(fitted == v(0.4, leaf(1), h(1.0 / 3.0, leaf(2), leaf(3))))
+}
+
+@Test func fittingIgnoresEdgesOnTheScreenBorder() {
+    let frame = Frame(x: 0, y: 0, width: 1000, height: 600)
+    let tree = v(0.5, leaf(1), leaf(2))
+
+    #expect(tree.fitting(WindowID(1), to: Frame(x: 50, y: 0, width: 450, height: 600), in: frame) == tree)
 }

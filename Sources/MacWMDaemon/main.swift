@@ -54,6 +54,10 @@ let lastWorkspaceSwitch = LastSwitch()
 /// arrived reentrantly (AX calls can pump the run loop) and mutating the store
 /// mid-pass is unsafe, so removal waits until the pass finishes.
 var pendingWindowRemovals: Set<WindowID> = []
+/// Tiled windows the user is resizing by dragging an edge; their new size is
+/// adopted once the mouse button is released.
+var userResizedWindows: Set<WindowID> = []
+var userResizeTimer: Timer?
 let socketPath = "/tmp/macwm.sock"
 let eventsSocketPath = "/tmp/macwm-events.sock"
 let events = UnixSocketBroadcaster(path: eventsSocketPath)
@@ -176,6 +180,11 @@ let observerRegistry = AXObserverRegistry { processID, event in
             showWorkspaceWindows(workspaces.value.activeWorkspace, client: client, store: &store, workspaces: workspaces.value, maximizedFrames: maximizedFrames)
             applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
             notifyBar(store: store, workspace: workspaces.value.activeWorkspace, layout: workspaces.value.layout(for: workspaces.value.activeWorkspace, default: runtimeConfiguration.value.defaultLayout(for: workspaces.value.activeWorkspace)).rawValue, position: runtimeConfiguration.value.barPosition, workspaces: workspaces.value)
+        case .windowResized(let element):
+            // Only a drag by the user counts: macwm resizes with the button up.
+            let isUserDragging = NSEvent.pressedMouseButtons & 1 != 0
+            guard isUserDragging, !layoutGuard.isApplying else { return }
+            watchUserResize(WindowID(processID: UInt32(application.processIdentifier), elementHash: Int(truncatingIfNeeded: CFHash(element))))
         case .environmentChanged:
             // Without Accessibility every query answers empty; replacing the
             // store with that would abandon parked windows in the corner.
@@ -483,9 +492,8 @@ private func execute(_ command: Command, client: AXClient, store: inout WindowSt
         }
         applyTiling(client: client, store: &store, config: configuration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
         return "ok"
-    case let .preselect(direction):
-        workspaces.value.preselect(direction, in: workspaces.value.activeWorkspace)
-        return "ok"
+    case .preselect:
+        return "error: preselect has no effect; windows are laid out as a grid"
     case let .exec(commandLine):
         launch(commandLine)
         return "ok"
@@ -610,6 +618,51 @@ private func activeWorkspaceWindowIDs(store: WindowStore, workspaces: WorkspaceM
     return Set(ids).subtracting(workspaces.hiddenGroupMembers(among: ids))
 }
 
+/// Waits for the mouse button to come up, then adopts the sizes the user
+/// dragged; re-tiling mid-drag would fight the drag.
+@MainActor
+private func watchUserResize(_ id: WindowID) {
+    userResizedWindows.insert(id)
+    guard userResizeTimer == nil else { return }
+    userResizeTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+        guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+        timer.invalidate()
+        MainActor.assumeIsolated {
+            userResizeTimer = nil
+            let ids = userResizedWindows
+            userResizedWindows.removeAll()
+            adoptUserResizes(ids)
+        }
+    }
+}
+
+/// Moves the splits so each window keeps the frame the user dragged it to.
+@MainActor
+private func adoptUserResizes(_ ids: Set<WindowID>) {
+    let workspace = workspaces.value.activeWorkspace
+    guard let layoutFrame = client.layoutFrame(), let tree = workspaces.value.storedLayoutTree(for: workspace) else { return }
+    let cells = tree.frames(in: layoutFrame)
+    var adopted = false
+    // Windows with a minimum size never match the frame macwm asked for, so
+    // their frame says nothing about which edge the user dragged.
+    for id in ids where !workspaces.value.hasMinimumSize(id) {
+        guard let window = store.windows.first(where: { $0.id == id }), let cell = cells[id], let applied = window.frame, let actual = client.currentFrame(for: window) else { continue }
+        // The window sits inside its tile by the gaps; the same insets turn its new frame into a tile.
+        let target = Frame(
+            x: actual.x - (applied.x - cell.x),
+            y: actual.y - (applied.y - cell.y),
+            width: actual.width + (cell.width - applied.width),
+            height: actual.height + (cell.height - applied.height)
+        )
+        let fitted = workspaces.value.fitTiled(id, to: target, frame: layoutFrame, in: workspace)
+        if fitted { print("macwm: \(window.appName) resized by hand; adopting its size") }
+        adopted = adopted || fitted
+    }
+    guard adopted else { return }
+    applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+    workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+}
+
 /// Drops a closed window from every piece of state that tracks it, then
 /// re-tiles. Shared by the destroy handler and the queue it defers to while
 /// a tiling pass is in progress.
@@ -684,7 +737,10 @@ private func showWorkspaceWindows(_ workspace: Int, client: AXClient, store: ino
         if let remembered = framesToRemember[change.window.id] { parkedFrames.value[change.window.id] = remembered }
     }
     let queued = changes
-    client.apply(queued) { result in FrameCorrections.rereadRejected(queued, result: result, client: client) }
+    client.apply(queued) { result in
+        FrameCorrections.rereadRejected(queued, result: result, client: client)
+        FrameCorrections.dropVanished(result)
+    }
 }
 
 /// Runs on the main thread from apply's completion, after the application answered.
@@ -695,6 +751,64 @@ enum FrameCorrections {
         for change in changes where !result.applied.contains(change.window.id) {
             guard let actual = client.currentFrame(for: change.window) else { continue }
             MainActor.assumeIsolated { store.updateFrame(actual, for: change.window.id) }
+        }
+    }
+
+    /// Windows with a minimum size larger than their tile, like Safari or the
+    /// App Store, would overflow onto their neighbours; the size they kept is
+    /// remembered and the grid is laid out again around it. Minimums only grow,
+    /// so this settles after one pass per window.
+    static func growTilesOfOversizedWindows(_ changes: [AXClient.FrameChange], result: AXClient.ApplyResult, client: AXClient) {
+        guard !result.oversized.isEmpty else { return }
+        let candidates = changes.filter { result.oversized[$0.window.id] != nil }
+        // Some applications, Chrome among them, finish shrinking a moment
+        // after answering; only a window still too large then has a minimum.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            MainActor.assumeIsolated { learnMinimumSizes(candidates, client: client) }
+        }
+    }
+
+    @MainActor
+    private static func learnMinimumSizes(_ changes: [AXClient.FrameChange], client: AXClient) {
+        // A window being dragged larger by hand is not one that cannot shrink.
+        let isUserDragging = NSEvent.pressedMouseButtons & 1 != 0
+        guard !isUserDragging else { return }
+        let workspace = workspaces.value.activeWorkspace
+        guard let layoutFrame = client.layoutFrame(), let tree = workspaces.value.storedLayoutTree(for: workspace) else { return }
+        let cells = tree.frames(in: layoutFrame)
+        var learned = false
+        for change in changes {
+            // A later pass gave the window another tile; that pass checks it again.
+            let isStillItsTile = store.windows.first { $0.id == change.window.id }?.frame == change.frame
+            guard isStillItsTile, let cell = cells[change.window.id], let actual = client.currentFrame(for: change.window) else { continue }
+            let isWider = actual.width > change.frame.width + 1
+            let isTaller = actual.height > change.frame.height + 1
+            guard isWider || isTaller else { continue }
+            // The tile is larger than the window by the gaps; the minimum is kept in tile terms.
+            let minimum = Size(
+                width: isWider ? actual.width + cell.width - change.frame.width : 0,
+                height: isTaller ? actual.height + cell.height - change.frame.height : 0
+            )
+            guard workspaces.value.recordMinimumSize(minimum, for: change.window.id) else { continue }
+            print("macwm: \(change.window.appName) needs \(Int(actual.width))x\(Int(actual.height)); making room in the grid")
+            learned = true
+        }
+        guard learned else { return }
+        applyTiling(client: client, store: &store, config: runtimeConfiguration.value, workspaces: &workspaces.value, maximizedFrames: maximizedFrames, force: true)
+        workspacePersistence.save(workspaces.value.persistedAssignments, activeWorkspace: workspace, trees: workspaces.value.persistedTrees, layouts: workspaces.value.persistedLayouts)
+    }
+
+    /// Windows closed without a destroy notification would otherwise keep
+    /// their tile as an empty hole forever.
+    static func dropVanished(_ result: AXClient.ApplyResult) {
+        guard !result.vanished.isEmpty else { return }
+        MainActor.assumeIsolated {
+            for id in result.vanished where store.windows.contains(where: { $0.id == id }) {
+                print("macwm: dropping window \(id.rawValue), gone from its application")
+                pendingWindowRemovals.insert(id)
+            }
+            guard !layoutGuard.isApplying else { return }
+            drainPendingWindowRemovals()
         }
     }
 
@@ -821,6 +935,8 @@ private func applyTiling(client: AXClient, store: inout WindowStore, config: Con
     client.apply(queued) { result in
         FrameCorrections.rereadRejected(queued, result: result, client: client)
         FrameCorrections.floatRefusingSize(queued, result: result, client: client)
+        FrameCorrections.dropVanished(result)
+        FrameCorrections.growTilesOfOversizedWindows(queued, result: result, client: client)
     }
     MainActor.assumeIsolated { groupTabBars.update(tabGroups) }
     print("macwm: applied \(layout.rawValue) to \(tileableWindows.count) windows")

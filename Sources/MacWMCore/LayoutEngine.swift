@@ -19,7 +19,7 @@ public enum BSPLayout {
         switch tree {
         case let .leaf(window): return [window: frame]
         case let .split(direction, ratio, first, second):
-            let boundedRatio = min(max(ratio, 0.1), 0.9)
+            let boundedRatio = min(max(ratio, 0.01), 0.99)
             switch direction {
             case .vertical:
                 let available = max(0, frame.width - gap)

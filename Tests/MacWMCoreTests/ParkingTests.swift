@@ -34,3 +34,12 @@ private let screen = Frame(x: 0, y: 0, width: 1920, height: 1080)
 
     #expect(parked.centered(in: visible) == Frame(x: 560, y: 252.5, width: 800, height: 600))
 }
+
+@Test func parkedFrameRaisedByMacOSStaysParked() {
+    // macOS pushes a window back up so part of it stays reachable; only the
+    // one-point column at the right edge is left of where it was parked.
+    let parked = Frame(x: 100, y: 100, width: 800, height: 600).parked(in: screen)
+    let raised = Frame(x: parked.x, y: parked.y - 40, width: parked.width, height: parked.height)
+
+    #expect(raised.isParked(in: screen))
+}

@@ -1,3 +1,13 @@
+public struct Size: Equatable, Sendable {
+    public var width: Double
+    public var height: Double
+
+    public init(width: Double, height: Double) {
+        self.width = width
+        self.height = height
+    }
+}
+
 public struct Frame: Equatable, Sendable, Codable {
     public var x: Double
     public var y: Double
@@ -88,8 +98,10 @@ public extension Frame {
         )
     }
 
+    /// Only the column is checked: macOS raises parked windows so their title
+    /// bar stays reachable, but never moves them back from the right edge.
     func isParked(in screen: Frame, visibleSliver: Double = 1) -> Bool {
-        x >= screen.x + screen.width - visibleSliver && y >= screen.y + screen.height - visibleSliver
+        x >= screen.x + screen.width - visibleSliver
     }
 
     func centered(in container: Frame) -> Frame {
